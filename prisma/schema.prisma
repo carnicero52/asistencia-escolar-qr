@@ -143,3 +143,141 @@ model Notificacion {
   error         String?
   createdAt     DateTime @default(now())
 }
+
+// ─────────────────────────────────────────────────────────────
+// MODELOS PARA SISTEMA POS
+// ─────────────────────────────────────────────────────────────
+
+model ClientePOS {
+  id                String   @id @default(uuid())
+  nombre            String
+  email             String
+  telefono          String?
+  direccion         String?
+  rfc               String?
+  notas             String?
+  comprasTotal      Int      @default(0)
+  ultimaCompra      DateTime?
+  activo            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([email])
+}
+
+model ProductoPOS {
+  id                String   @id @default(uuid())
+  codigo            String   @unique
+  nombre            String
+  descripcion       String?
+  categoria         String   @default("General")
+  stock             Int      @default(0)
+  stockMinimo       Int      @default(5)
+  precioCompra      Float    @default(0)
+  precioVenta       Float    @default(0)
+  proveedor         String?
+  activo            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model VentaPOS {
+  id                String   @id @default(uuid())
+  numeroVenta       String   @unique
+  clienteId         String?
+  clienteNombre     String?
+  subtotal          Float    @default(0)
+  impuestos         Float    @default(0)
+  descuento         Float    @default(0)
+  total             Float    @default(0)
+  metodoPago        String   @default("Efectivo")
+  estado            String   @default("Completada")
+  createdAt         DateTime @default(now())
+
+  detalles          DetalleVentaPOS[]
+}
+
+model DetalleVentaPOS {
+  id                String   @id @default(uuid())
+  ventaId           String
+  venta             VentaPOS @relation(fields: [ventaId], references: [id])
+  productoId        String?
+  productoNombre    String
+  cantidad          Int
+  precioUnitario    Float
+  subtotal          Float
+}
+
+model ProveedorPOS {
+  id                String   @id @default(uuid())
+  nombre            String
+  contacto          String?
+  email             String?
+  telefono          String?
+  direccion         String?
+  productos         String?
+  notas             String?
+  activo            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model CompraPOS {
+  id                String   @id @default(uuid())
+  numeroCompra      String   @unique
+  proveedorId       String?
+  proveedorNombre   String?
+  subtotal          Float    @default(0)
+  impuestos         Float    @default(0)
+  total             Float    @default(0)
+  estado            String   @default("Pendiente")
+  fecha             DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  detalles          DetalleCompraPOS[]
+}
+
+model DetalleCompraPOS {
+  id                String   @id @default(uuid())
+  compraId          String
+  compra            CompraPOS @relation(fields: [compraId], references: [id])
+  productoId        String?
+  productoNombre    String
+  cantidad          Int
+  precioUnitario    Float
+  subtotal          Float
+}
+
+model GastoPOS {
+  id                String   @id @default(uuid())
+  concepto          String
+  categoria         String   @default("Operativo")
+  monto             Float    @default(0)
+  descripcion       String?
+  fecha             DateTime @default(now())
+  createdAt         DateTime @default(now())
+}
+
+model UsuarioPOS {
+  id                String   @id @default(uuid())
+  nombre            String
+  email             String   @unique
+  password          String?
+  rol               String   @default("vendedor")
+  activo            Boolean  @default(true)
+  ultimoAcceso      DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ConfigPOS {
+  id                String   @id @default("default")
+  nombreNegocio     String   @default("Mi Negocio")
+  moneda            String   @default("$")
+  impuesto          Float    @default(16)
+  direccion         String?
+  telefono          String?
+  email             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
