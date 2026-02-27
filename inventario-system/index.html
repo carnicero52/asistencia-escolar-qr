@@ -1,0 +1,1462 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Inventario</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --success: #16a34a;
+      --warning: #f59e0b;
+      --danger: #dc2626;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-300: #d1d5db;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-600: #4b5563;
+      --gray-700: #374151;
+      --gray-800: #1f2937;
+      --gray-900: #111827;
+    }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--gray-100);
+      min-height: 100vh;
+      color: var(--gray-800);
+    }
+    
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+      color: white;
+      padding: 1rem 2rem;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+    }
+    
+    .logo-text h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    
+    .logo-text span {
+      font-size: 0.75rem;
+      opacity: 0.8;
+    }
+    
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    
+    .btn {
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .btn-primary {
+      background: white;
+      color: var(--primary);
+    }
+    
+    .btn-primary:hover {
+      background: var(--gray-100);
+    }
+    
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+    
+    .btn-success:hover {
+      background: #15803d;
+    }
+    
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+    
+    .btn-danger:hover {
+      background: #b91c1c;
+    }
+    
+    .btn-secondary {
+      background: var(--gray-200);
+      color: var(--gray-700);
+    }
+    
+    .btn-secondary:hover {
+      background: var(--gray-300);
+    }
+    
+    /* Navigation */
+    .nav {
+      background: white;
+      border-bottom: 1px solid var(--gray-200);
+      padding: 0 2rem;
+    }
+    
+    .nav-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      gap: 0;
+    }
+    
+    .nav-tab {
+      padding: 1rem 1.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--gray-500);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .nav-tab:hover {
+      color: var(--gray-700);
+      background: var(--gray-50);
+    }
+    
+    .nav-tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+    
+    /* Main Content */
+    .main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    /* Cards */
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    
+    .card-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--gray-200);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .card-header h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .card-body {
+      padding: 1.5rem;
+    }
+    
+    /* Dashboard Stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    .stat-card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .stat-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+    
+    .stat-icon.blue { background: #dbeafe; }
+    .stat-icon.green { background: #dcfce7; }
+    .stat-icon.yellow { background: #fef3c7; }
+    .stat-icon.red { background: #fee2e2; }
+    .stat-icon.purple { background: #f3e8ff; }
+    
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--gray-900);
+    }
+    
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--gray-500);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    /* Tables */
+    .table-container {
+      overflow-x: auto;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    
+    th, td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--gray-200);
+    }
+    
+    th {
+      background: var(--gray-50);
+      font-weight: 600;
+      color: var(--gray-600);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    tr:hover {
+      background: var(--gray-50);
+    }
+    
+    .badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    
+    .badge-success { background: #dcfce7; color: #166534; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-danger { background: #fee2e2; color: #991b1b; }
+    .badge-info { background: #dbeafe; color: #1e40af; }
+    
+    /* Forms */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+    }
+    
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--gray-700);
+      margin-bottom: 0.375rem;
+    }
+    
+    .form-control {
+      width: 100%;
+      padding: 0.625rem 0.875rem;
+      border: 1px solid var(--gray-300);
+      border-radius: 8px;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+    
+    select.form-control {
+      background: white;
+      cursor: pointer;
+    }
+    
+    /* Alerts */
+    .alert {
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+    
+    .alert-warning {
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      color: #92400e;
+    }
+    
+    .alert-danger {
+      background: #fee2e2;
+      border: 1px solid #fca5a5;
+      color: #991b1b;
+    }
+    
+    .alert-success {
+      background: #dcfce7;
+      border: 1px solid #86efac;
+      color: #166534;
+    }
+    
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    
+    .modal-overlay.active {
+      display: flex;
+    }
+    
+    .modal {
+      background: white;
+      border-radius: 16px;
+      width: 100%;
+      max-width: 600px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+    }
+    
+    .modal-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--gray-200);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .modal-header h3 {
+      font-size: 1.125rem;
+      font-weight: 600;
+    }
+    
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      color: var(--gray-400);
+      cursor: pointer;
+      padding: 0.25rem;
+      line-height: 1;
+    }
+    
+    .modal-close:hover {
+      color: var(--gray-600);
+    }
+    
+    .modal-body {
+      padding: 1.5rem;
+    }
+    
+    .modal-footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--gray-200);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+    
+    /* Search */
+    .search-box {
+      position: relative;
+      max-width: 300px;
+    }
+    
+    .search-box input {
+      padding-left: 2.5rem;
+    }
+    
+    .search-box::before {
+      content: "🔍";
+      position: absolute;
+      left: 0.875rem;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.875rem;
+    }
+    
+    /* Loading */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem;
+    }
+    
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--gray-200);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Actions */
+    .actions {
+      display: flex;
+      gap: 0.25rem;
+    }
+    
+    .btn-icon {
+      padding: 0.375rem;
+      background: none;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--gray-500);
+      transition: all 0.2s;
+    }
+    
+    .btn-icon:hover {
+      background: var(--gray-100);
+      color: var(--gray-700);
+    }
+    
+    .btn-icon.danger:hover {
+      background: #fee2e2;
+      color: var(--danger);
+    }
+    
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--gray-500);
+    }
+    
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header-content {
+        flex-direction: column;
+        gap: 1rem;
+      }
+      
+      .nav-content {
+        overflow-x: auto;
+        padding-bottom: 0.5rem;
+      }
+      
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      
+      .main {
+        padding: 1rem;
+      }
+      
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    /* Print */
+    @media print {
+      .header, .nav, .btn, .modal-overlay {
+        display: none !important;
+      }
+      
+      .main {
+        padding: 0;
+      }
+      
+      .card {
+        box-shadow: none;
+        border: 1px solid var(--gray-300);
+      }
+    }
+    
+    /* Toast Notification */
+    .toast-container {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    
+    .toast {
+      background: white;
+      border-radius: 8px;
+      padding: 1rem;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      animation: slideIn 0.3s ease;
+      min-width: 300px;
+    }
+    
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    
+    .toast.success { border-left: 4px solid var(--success); }
+    .toast.error { border-left: 4px solid var(--danger); }
+    .toast.warning { border-left: 4px solid var(--warning); }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-content">
+      <div class="logo">
+        <div class="logo-icon">📦</div>
+        <div class="logo-text">
+          <h1>Sistema de Inventario</h1>
+          <span id="nombreNegocio">Mi Comercio</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-primary" onclick="abrirModalProducto()">
+          ➕ Nuevo Producto
+        </button>
+        <button class="btn btn-primary" onclick="verificarStock()">
+          🔔 Verificar Stock
+        </button>
+      </div>
+    </div>
+  </header>
+  
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-content">
+      <button class="nav-tab active" data-tab="dashboard">
+        📊 Dashboard
+      </button>
+      <button class="nav-tab" data-tab="productos">
+        📦 Productos
+      </button>
+      <button class="nav-tab" data-tab="entradas">
+        📥 Entradas
+      </button>
+      <button class="nav-tab" data-tab="salidas">
+        📤 Salidas
+      </button>
+      <button class="nav-tab" data-tab="movimientos">
+        📋 Movimientos
+      </button>
+      <button class="nav-tab" data-tab="alertas">
+        🚨 Alertas
+      </button>
+    </div>
+  </nav>
+  
+  <!-- Main Content -->
+  <main class="main">
+    <!-- Dashboard Tab -->
+    <div id="dashboard" class="tab-content active">
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-icon blue">📦</div>
+          <div class="stat-value" id="totalProductos">0</div>
+          <div class="stat-label">Total Productos</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon green">💰</div>
+          <div class="stat-value" id="valorInventario">$0</div>
+          <div class="stat-label">Valor Inventario</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon purple">💵</div>
+          <div class="stat-value" id="valorVenta">$0</div>
+          <div class="stat-label">Valor Venta</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon yellow">⚠️</div>
+          <div class="stat-value" id="stockBajo">0</div>
+          <div class="stat-label">Stock Bajo</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon red">🚨</div>
+          <div class="stat-value" id="sinStock">0</div>
+          <div class="stat-label">Sin Stock</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon blue">📈</div>
+          <div class="stat-value" id="gananciaPotencial">$0</div>
+          <div class="stat-label">Ganancia Potencial</div>
+        </div>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div class="card">
+          <div class="card-header">
+            <h2>🏆 Productos Más Vendidos</h2>
+          </div>
+          <div class="card-body">
+            <div id="productosVendidos" class="table-container">
+              <p class="empty-state">Cargando...</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="card">
+          <div class="card-header">
+            <h2>📊 Por Categoría</h2>
+          </div>
+          <div class="card-body">
+            <div id="categoriasChart" class="table-container">
+              <p class="empty-state">Cargando...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card" style="margin-top: 1rem;">
+        <div class="card-header">
+          <h2>🚨 Alertas de Stock</h2>
+        </div>
+        <div class="card-body">
+          <div id="alertasDashboard" class="table-container">
+            <p class="empty-state">Sin alertas</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Productos Tab -->
+    <div id="productos" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2>📦 Lista de Productos</h2>
+          <div style="display: flex; gap: 0.5rem;">
+            <div class="search-box">
+              <input type="text" class="form-control" id="buscarProducto" placeholder="Buscar producto..." onkeyup="filtrarProductos()">
+            </div>
+            <button class="btn btn-success" onclick="abrirModalProducto()">➕ Agregar</button>
+            <button class="btn btn-secondary" onclick="exportarProductos()">📥 Exportar</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="tablaProductos" class="table-container">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Entradas Tab -->
+    <div id="entradas" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2>📥 Registrar Entrada de Inventario</h2>
+        </div>
+        <div class="card-body">
+          <form id="formEntrada" onsubmit="registrarEntrada(event)">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Producto *</label>
+                <select class="form-control" id="entradaProducto" required>
+                  <option value="">Seleccionar producto</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Cantidad *</label>
+                <input type="number" class="form-control" id="entradaCantidad" min="1" required>
+              </div>
+              <div class="form-group">
+                <label>Precio Unitario Compra *</label>
+                <input type="number" class="form-control" id="entradaPrecio" step="0.01" min="0" required>
+              </div>
+              <div class="form-group">
+                <label>Motivo</label>
+                <select class="form-control" id="entradaMotivo">
+                  <option value="Reabastecimiento">Reabastecimiento</option>
+                  <option value="Devolución">Devolución</option>
+                  <option value="Ajuste de inventario">Ajuste de inventario</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top: 1rem;">
+              <button type="submit" class="btn btn-success">📥 Registrar Entrada</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Salidas Tab -->
+    <div id="salidas" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2>📤 Registrar Salida de Inventario</h2>
+        </div>
+        <div class="card-body">
+          <form id="formSalida" onsubmit="registrarSalida(event)">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Producto *</label>
+                <select class="form-control" id="salidaProducto" required onchange="mostrarStockActual()">
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Stock Disponible</label>
+                <input type="text" class="form-control" id="stockDisponible" readonly style="background: var(--gray-100);">
+              </div>
+              <div class="form-group">
+                <label>Cantidad *</label>
+                <input type="number" class="form-control" id="salidaCantidad" min="1" required>
+              </div>
+              <div class="form-group">
+                <label>Precio Unitario Venta *</label>
+                <input type="number" class="form-control" id="salidaPrecio" step="0.01" min="0" required>
+              </div>
+              <div class="form-group">
+                <label>Motivo</label>
+                <select class="form-control" id="salidaMotivo">
+                  <option value="Venta">Venta</option>
+                  <option value="Merma">Merma</option>
+                  <option value="Devolución a proveedor">Devolución a proveedor</option>
+                  <option value="Ajuste de inventario">Ajuste de inventario</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top: 1rem;">
+              <button type="submit" class="btn btn-danger">📤 Registrar Salida</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Movimientos Tab -->
+    <div id="movimientos" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2>📋 Historial de Movimientos</h2>
+          <div style="display: flex; gap: 0.5rem;">
+            <select class="form-control" id="filtroTipo" onchange="cargarMovimientos()">
+              <option value="todos">Todos</option>
+              <option value="ENTRADA">Solo Entradas</option>
+              <option value="SALIDA">Solo Salidas</option>
+            </select>
+            <button class="btn btn-secondary" onclick="exportarMovimientos()">📥 Exportar</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="tablaMovimientos" class="table-container">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Alertas Tab -->
+    <div id="alertas" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2>🚨 Productos con Stock Bajo o Sin Stock</h2>
+          <button class="btn btn-danger" onclick="enviarAlertasManual()">📧 Enviar Alertas</button>
+        </div>
+        <div class="card-body">
+          <div id="listaAlertas" class="table-container">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  
+  <!-- Modal Producto -->
+  <div id="modalProducto" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalProductoTitulo">➕ Nuevo Producto</h3>
+        <button class="modal-close" onclick="cerrarModalProducto()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="formProducto" onsubmit="guardarProducto(event)">
+          <input type="hidden" id="productoId">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Código</label>
+              <input type="text" class="form-control" id="productoCodigo" placeholder="Auto-generado">
+            </div>
+            <div class="form-group">
+              <label>Nombre *</label>
+              <input type="text" class="form-control" id="productoNombre" required>
+            </div>
+            <div class="form-group">
+              <label>Categoría</label>
+              <input type="text" class="form-control" id="productoCategoria" list="categoriasList" placeholder="General">
+              <datalist id="categoriasList"></datalist>
+            </div>
+            <div class="form-group">
+              <label>Stock Inicial</label>
+              <input type="number" class="form-control" id="productoStock" value="0" min="0">
+            </div>
+            <div class="form-group">
+              <label>Stock Mínimo</label>
+              <input type="number" class="form-control" id="productoStockMinimo" value="5" min="0">
+            </div>
+            <div class="form-group">
+              <label>Precio de Compra *</label>
+              <input type="number" class="form-control" id="productoPrecioCompra" step="0.01" min="0" required onchange="calcularPrecioVenta()">
+            </div>
+            <div class="form-group">
+              <label>% Ganancia</label>
+              <input type="number" class="form-control" id="productoGanancia" value="30" min="0" onchange="calcularPrecioVenta()">
+            </div>
+            <div class="form-group">
+              <label>Precio de Venta</label>
+              <input type="number" class="form-control" id="productoPrecioVenta" step="0.01" min="0" readonly style="background: var(--gray-100);">
+            </div>
+            <div class="form-group">
+              <label>Proveedor</label>
+              <input type="text" class="form-control" id="productoProveedor" list="proveedoresList">
+              <datalist id="proveedoresList"></datalist>
+            </div>
+            <div class="form-group">
+              <label>Ubicación</label>
+              <input type="text" class="form-control" id="productoUbicacion" placeholder="Ej: Estante A-1">
+            </div>
+          </div>
+          <div class="modal-footer" style="margin: 0 -1.5rem -1.5rem;">
+            <button type="button" class="btn btn-secondary" onclick="cerrarModalProducto()">Cancelar</button>
+            <button type="submit" class="btn btn-success" id="btnGuardarProducto">💾 Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+  
+  <script>
+    // Variables globales
+    let productos = [];
+    let categorias = [];
+    let proveedores = [];
+    
+    // Inicialización
+    document.addEventListener('DOMContentLoaded', function() {
+      // Tabs
+      document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+          const tabId = this.dataset.tab;
+          
+          document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          
+          this.classList.add('active');
+          document.getElementById(tabId).classList.add('active');
+          
+          cargarDatosTab(tabId);
+        });
+      });
+      
+      // Cargar datos iniciales
+      cargarDashboard();
+      cargarProductos();
+    });
+    
+    // Cargar datos según tab
+    function cargarDatosTab(tabId) {
+      switch(tabId) {
+        case 'dashboard':
+          cargarDashboard();
+          break;
+        case 'productos':
+          cargarProductos();
+          break;
+        case 'entradas':
+        case 'salidas':
+          cargarSelectProductos();
+          break;
+        case 'movimientos':
+          cargarMovimientos();
+          break;
+        case 'alertas':
+          cargarAlertas();
+          break;
+      }
+    }
+    
+    // Dashboard
+    function cargarDashboard() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          document.getElementById('totalProductos').textContent = data.totalProductos;
+          document.getElementById('valorInventario').textContent = '$' + data.valorInventario.toFixed(2);
+          document.getElementById('valorVenta').textContent = '$' + data.valorVenta.toFixed(2);
+          document.getElementById('stockBajo').textContent = data.productosStockBajo;
+          document.getElementById('sinStock').textContent = data.productosSinStock;
+          document.getElementById('gananciaPotencial').textContent = '$' + data.gananciaPotencial.toFixed(2);
+          
+          // Productos más vendidos
+          renderProductosVendidos(data.productosMasVendidos);
+          
+          // Categorías
+          renderCategorias(data.categorias);
+          
+          // Alertas
+          renderAlertasDashboard(data.alertas);
+        })
+        .withFailureHandler(mostrarError)
+        .obtenerEstadisticas();
+    }
+    
+    function renderProductosVendidos(lista) {
+      const container = document.getElementById('productosVendidos');
+      
+      if (!lista || lista.length === 0) {
+        container.innerHTML = '<p class="empty-state">Sin ventas registradas este mes</p>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>Producto</th><th>Cantidad</th><th>Total</th></tr></thead><tbody>';
+      
+      lista.forEach(p => {
+        html += `<tr>
+          <td>${p.nombre}</td>
+          <td>${p.cantidad}</td>
+          <td>$${p.total.toFixed(2)}</td>
+        </tr>`;
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    
+    function renderCategorias(cats) {
+      const container = document.getElementById('categoriasChart');
+      
+      if (!cats || Object.keys(cats).length === 0) {
+        container.innerHTML = '<p class="empty-state">Sin categorías</p>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>Categoría</th><th>Productos</th><th>Valor</th></tr></thead><tbody>';
+      
+      for (const [cat, data] of Object.entries(cats)) {
+        html += `<tr>
+          <td>${cat}</td>
+          <td>${data.cantidad}</td>
+          <td>$${data.valor.toFixed(2)}</td>
+        </tr>`;
+      }
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    
+    function renderAlertasDashboard(alertas) {
+      const container = document.getElementById('alertasDashboard');
+      
+      if (!alertas || alertas.length === 0) {
+        container.innerHTML = '<p class="empty-state" style="color: var(--success);">✅ Sin alertas de stock</p>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>Producto</th><th>Stock</th><th>Mínimo</th><th>Estado</th></tr></thead><tbody>';
+      
+      alertas.forEach(a => {
+        const badgeClass = a.estado === 'CRÍTICO' ? 'badge-danger' : 'badge-warning';
+        html += `<tr>
+          <td>${a.nombre}</td>
+          <td>${a.stock}</td>
+          <td>${a.stockMinimo}</td>
+          <td><span class="badge ${badgeClass}">${a.estado}</span></td>
+        </tr>`;
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    
+    // Productos
+    function cargarProductos() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          productos = data;
+          renderTablaProductos(data);
+          cargarCategoriasProveedores(data);
+        })
+        .withFailureHandler(mostrarError)
+        .obtenerProductos();
+    }
+    
+    function renderTablaProductos(lista) {
+      const container = document.getElementById('tablaProductos');
+      
+      if (!lista || lista.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📦</div><p>No hay productos registrados</p></div>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Stock</th><th>P. Compra</th><th>P. Venta</th><th>Ganancia</th><th>Acciones</th></tr></thead><tbody>';
+      
+      lista.forEach(p => {
+        const stockClass = p.stock === 0 ? 'badge-danger' : p.stock <= p.stockMinimo ? 'badge-warning' : 'badge-success';
+        const stockText = p.stock === 0 ? 'Sin stock' : p.stock <= p.stockMinimo ? 'Bajo' : 'OK';
+        
+        html += `<tr>
+          <td><code>${p.codigo}</code></td>
+          <td><strong>${p.nombre}</strong></td>
+          <td>${p.categoria}</td>
+          <td><span class="badge ${stockClass}">${p.stock} (${stockText})</span></td>
+          <td>$${p.precioCompra.toFixed(2)}</td>
+          <td>$${p.precioVenta.toFixed(2)}</td>
+          <td style="color: var(--success);">$${p.gananciaMonto.toFixed(2)} (${p.gananciaPorcentaje}%)</td>
+          <td class="actions">
+            <button class="btn-icon" onclick="editarProducto('${p.id}')" title="Editar">✏️</button>
+            <button class="btn-icon danger" onclick="eliminarProducto('${p.id}')" title="Eliminar">🗑️</button>
+          </td>
+        </tr>`;
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    
+    function cargarCategoriasProveedores(data) {
+      categorias = [...new Set(data.map(p => p.categoria).filter(c => c))];
+      proveedores = [...new Set(data.map(p => p.proveedor).filter(p => p))];
+      
+      // Actualizar datalists
+      document.getElementById('categoriasList').innerHTML = categorias.map(c => `<option value="${c}">`).join('');
+      document.getElementById('proveedoresList').innerHTML = proveedores.map(p => `<option value="${p}">`).join('');
+    }
+    
+    function filtrarProductos() {
+      const busqueda = document.getElementById('buscarProducto').value.toLowerCase();
+      const filtrados = productos.filter(p => 
+        p.nombre.toLowerCase().includes(busqueda) ||
+        p.codigo.toLowerCase().includes(busqueda) ||
+        p.categoria.toLowerCase().includes(busqueda)
+      );
+      renderTablaProductos(filtrados);
+    }
+    
+    // Modal Producto
+    function abrirModalProducto() {
+      document.getElementById('formProducto').reset();
+      document.getElementById('productoId').value = '';
+      document.getElementById('modalProductoTitulo').textContent = '➕ Nuevo Producto';
+      document.getElementById('productoStockMinimo').value = '5';
+      document.getElementById('productoGanancia').value = '30';
+      document.getElementById('modalProducto').classList.add('active');
+    }
+    
+    function cerrarModalProducto() {
+      document.getElementById('modalProducto').classList.remove('active');
+    }
+    
+    function editarProducto(id) {
+      const producto = productos.find(p => p.id === id);
+      if (!producto) return;
+      
+      document.getElementById('productoId').value = producto.id;
+      document.getElementById('productoCodigo').value = producto.codigo;
+      document.getElementById('productoNombre').value = producto.nombre;
+      document.getElementById('productoCategoria').value = producto.categoria;
+      document.getElementById('productoStock').value = producto.stock;
+      document.getElementById('productoStockMinimo').value = producto.stockMinimo;
+      document.getElementById('productoPrecioCompra').value = producto.precioCompra;
+      document.getElementById('productoGanancia').value = producto.gananciaPorcentaje;
+      document.getElementById('productoPrecioVenta').value = producto.precioVenta.toFixed(2);
+      document.getElementById('productoProveedor').value = producto.proveedor;
+      document.getElementById('productoUbicacion').value = producto.ubicacion;
+      
+      document.getElementById('modalProductoTitulo').textContent = '✏️ Editar Producto';
+      document.getElementById('modalProducto').classList.add('active');
+    }
+    
+    function calcularPrecioVenta() {
+      const precioCompra = parseFloat(document.getElementById('productoPrecioCompra').value) || 0;
+      const ganancia = parseFloat(document.getElementById('productoGanancia').value) || 0;
+      const precioVenta = precioCompra * (1 + ganancia / 100);
+      document.getElementById('productoPrecioVenta').value = precioVenta.toFixed(2);
+    }
+    
+    function guardarProducto(e) {
+      e.preventDefault();
+      
+      const producto = {
+        id: document.getElementById('productoId').value,
+        codigo: document.getElementById('productoCodigo').value,
+        nombre: document.getElementById('productoNombre').value,
+        categoria: document.getElementById('productoCategoria').value || 'General',
+        stock: parseFloat(document.getElementById('productoStock').value) || 0,
+        stockMinimo: parseFloat(document.getElementById('productoStockMinimo').value) || 5,
+        precioCompra: parseFloat(document.getElementById('productoPrecioCompra').value) || 0,
+        gananciaPorcentaje: parseFloat(document.getElementById('productoGanancia').value) || 30,
+        proveedor: document.getElementById('productoProveedor').value,
+        ubicacion: document.getElementById('productoUbicacion').value
+      };
+      
+      const funcion = producto.id ? 'actualizarProducto' : 'agregarProducto';
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            mostrarToast(result.mensaje, 'success');
+            cerrarModalProducto();
+            cargarProductos();
+            cargarDashboard();
+          } else {
+            mostrarToast(result.mensaje, 'error');
+          }
+        })
+        .withFailureHandler(mostrarError)
+        [funcion](producto);
+    }
+    
+    function eliminarProducto(id) {
+      if (!confirm('¿Estás seguro de eliminar este producto?')) return;
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            mostrarToast(result.mensaje, 'success');
+            cargarProductos();
+            cargarDashboard();
+          } else {
+            mostrarToast(result.mensaje, 'error');
+          }
+        })
+        .withFailureHandler(mostrarError)
+        .eliminarProducto(id);
+    }
+    
+    // Select Productos
+    function cargarSelectProductos() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          productos = data;
+          const selectEntrada = document.getElementById('entradaProducto');
+          const selectSalida = document.getElementById('salidaProducto');
+          
+          selectEntrada.innerHTML = '<option value="">Seleccionar producto</option>';
+          selectSalida.innerHTML = '<option value="">Seleccionar producto</option>';
+          
+          data.forEach(p => {
+            selectEntrada.innerHTML += `<option value="${p.id}" data-precio="${p.precioCompra}">${p.nombre} (${p.stock} en stock)</option>`;
+            selectSalida.innerHTML += `<option value="${p.id}" data-precio="${p.precioVenta}" data-stock="${p.stock}">${p.nombre} (${p.stock} en stock)</option>`;
+          });
+        })
+        .withFailureHandler(mostrarError)
+        .obtenerProductos();
+    }
+    
+    function mostrarStockActual() {
+      const select = document.getElementById('salidaProducto');
+      const option = select.options[select.selectedIndex];
+      const stock = option.dataset.stock || '0';
+      const precio = option.dataset.precio || '0';
+      
+      document.getElementById('stockDisponible').value = stock + ' unidades';
+      document.getElementById('salidaPrecio').value = precio;
+    }
+    
+    // Movimientos
+    function registrarEntrada(e) {
+      e.preventDefault();
+      
+      const datos = {
+        productoId: document.getElementById('entradaProducto').value,
+        cantidad: parseFloat(document.getElementById('entradaCantidad').value),
+        precioUnitario: parseFloat(document.getElementById('entradaPrecio').value),
+        motivo: document.getElementById('entradaMotivo').value
+      };
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            mostrarToast(result.mensaje, 'success');
+            document.getElementById('formEntrada').reset();
+            cargarSelectProductos();
+            cargarDashboard();
+          } else {
+            mostrarToast(result.mensaje, 'error');
+          }
+        })
+        .withFailureHandler(mostrarError)
+        .registrarEntrada(datos);
+    }
+    
+    function registrarSalida(e) {
+      e.preventDefault();
+      
+      const datos = {
+        productoId: document.getElementById('salidaProducto').value,
+        cantidad: parseFloat(document.getElementById('salidaCantidad').value),
+        precioUnitario: parseFloat(document.getElementById('salidaPrecio').value),
+        motivo: document.getElementById('salidaMotivo').value
+      };
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            mostrarToast(result.mensaje, 'success');
+            document.getElementById('formSalida').reset();
+            document.getElementById('stockDisponible').value = '';
+            cargarSelectProductos();
+            cargarDashboard();
+          } else {
+            mostrarToast(result.mensaje, 'error');
+          }
+        })
+        .withFailureHandler(mostrarError)
+        .registrarSalida(datos);
+    }
+    
+    function cargarMovimientos() {
+      const filtro = {
+        tipo: document.getElementById('filtroTipo').value
+      };
+      
+      google.script.run
+        .withSuccessHandler(function(data) {
+          renderTablaMovimientos(data);
+        })
+        .withFailureHandler(mostrarError)
+        .obtenerMovimientos(filtro);
+    }
+    
+    function renderTablaMovimientos(lista) {
+      const container = document.getElementById('tablaMovimientos');
+      
+      if (!lista || lista.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>No hay movimientos registrados</p></div>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cantidad</th><th>P. Unitario</th><th>Total</th><th>Motivo</th></tr></thead><tbody>';
+      
+      lista.forEach(m => {
+        const tipoClass = m.tipo === 'ENTRADA' ? 'badge-success' : 'badge-danger';
+        const fecha = new Date(m.fecha).toLocaleString('es-ES');
+        
+        html += `<tr>
+          <td>${fecha}</td>
+          <td><span class="badge ${tipoClass}">${m.tipo === 'ENTRADA' ? '📥' : '📤'} ${m.tipo}</span></td>
+          <td>${m.producto}</td>
+          <td>${m.cantidad}</td>
+          <td>$${m.precioUnitario.toFixed(2)}</td>
+          <td><strong>$${m.total.toFixed(2)}</strong></td>
+          <td>${m.motivo}</td>
+        </tr>`;
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    
+    // Alertas
+    function cargarAlertas() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          renderListaAlertas(data);
+        })
+        .withFailureHandler(mostrarError)
+        .obtenerProductos();
+    }
+    
+    function renderListaAlertas(productosData) {
+      const container = document.getElementById('listaAlertas');
+      
+      const alertas = productosData.filter(p => p.stock <= p.stockMinimo);
+      
+      if (alertas.length === 0) {
+        container.innerHTML = '<div class="alert alert-success"><strong>✅ Todo bien</strong><br>No hay productos con stock bajo</div>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>Producto</th><th>Código</th><th>Stock Actual</th><th>Stock Mínimo</th><th>Estado</th><th>Proveedor</th></tr></thead><tbody>';
+      
+      alertas.forEach(p => {
+        const estado = p.stock === 0 ? '🚨 CRÍTICO' : '⚠️ BAJO';
+        const badgeClass = p.stock === 0 ? 'badge-danger' : 'badge-warning';
+        
+        html += `<tr>
+          <td><strong>${p.nombre}</strong></td>
+          <td><code>${p.codigo}</code></td>
+          <td style="color: ${p.stock === 0 ? 'var(--danger)' : 'var(--warning)'}; font-weight: bold;">${p.stock}</td>
+          <td>${p.stockMinimo}</td>
+          <td><span class="badge ${badgeClass}">${estado}</span></td>
+          <td>${p.proveedor || '-'}</td>
+        </tr>`;
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    
+    function verificarStock() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          mostrarToast('Verificación enviada por Telegram y Email', 'success');
+        })
+        .withFailureHandler(mostrarError)
+        .enviarResumenDiario();
+    }
+    
+    function enviarAlertasManual() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          mostrarToast('Alertas enviadas correctamente', 'success');
+        })
+        .withFailureHandler(mostrarError)
+        .enviarResumenDiario();
+    }
+    
+    // Exportar
+    function exportarProductos() {
+      google.script.run
+        .withSuccessHandler(function(csv) {
+          descargarCSV(csv, 'productos.csv');
+        })
+        .withFailureHandler(mostrarError)
+        .exportarProductosCSV();
+    }
+    
+    function exportarMovimientos() {
+      google.script.run
+        .withSuccessHandler(function(csv) {
+          descargarCSV(csv, 'movimientos.csv');
+        })
+        .withFailureHandler(mostrarError)
+        .exportarMovimientosCSV();
+    }
+    
+    function descargarCSV(contenido, nombre) {
+      const blob = new Blob([contenido], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = nombre;
+      link.click();
+    }
+    
+    // Utilidades
+    function mostrarToast(mensaje, tipo) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast ${tipo}`;
+      
+      const icono = tipo === 'success' ? '✅' : tipo === 'error' ? '❌' : '⚠️';
+      toast.innerHTML = `<span>${icono}</span><span>${mensaje}</span>`;
+      
+      container.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.animation = 'slideIn 0.3s ease reverse';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+    
+    function mostrarError(error) {
+      console.error(error);
+      mostrarToast('Error: ' + error.message, 'error');
+    }
+  </script>
+</body>
+</html>

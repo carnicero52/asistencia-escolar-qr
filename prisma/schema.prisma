@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ─────────────────────────────────────────────────────────────
+// EMPRESA / CONFIGURACIÓN
+// ─────────────────────────────────────────────────────────────
+
+model Empresa {
+  id                String   @id @default("default")
+  nombre            String   @default("Mi Empresa")
+  direccion         String?
+  telefono          String?
+  email             String?
+  
+  // Horarios
+  horaEntrada       String   @default("09:00")
+  horaSalida        String   @default("18:00")
+  toleranciaMinutos Int      @default(15)
+  
+  // Notificaciones
+  notifEmail        Boolean  @default(true)
+  notifTelegram     Boolean  @default(false)
+  notifWhatsapp     Boolean  @default(false)
+  emailAdmin        String?
+  telegramBotToken  String?
+  telegramChatId    String?
+  
+  // Google Sheets
+  googleSheetsId    String?
+  googleSheetsRange String?  @default("Registros!A:L")
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────
+// EMPLEADOS
+// ─────────────────────────────────────────────────────────────
+
+model Empleado {
+  id            String   @id @default(uuid())
+  codigo        String   @unique
+  nombre        String
+  apellido      String
+  email         String?
+  telefono      String?
+  puesto        String?
+  departamento  String?
+  fotoUrl       String?
+  
+  // Horario personal (opcional)
+  horaEntrada   String?
+  horaSalida    String?
+  
+  // QR
+  qrCodigo      String   @unique
+  qrUrl         String?
+  
+  activo        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relaciones
+  registros     Registro[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// REGISTROS DE ASISTENCIA
+// ─────────────────────────────────────────────────────────────
+
+model Registro {
+  id              String   @id @default(uuid())
+  empleadoId      String
+  empleado        Empleado @relation(fields: [empleadoId], references: [id])
+  
+  tipo            String   // ENTRADA, SALIDA
+  fecha           String   // YYYY-MM-DD
+  hora            String   // HH:MM:SS
+  timestamp       DateTime @default(now())
+  
+  // Estado
+  estado          String   @default("normal") // normal, tarde, temprano
+  minutosRetraso  Int      @default(0)
+  
+  // Ubicación (opcional)
+  latitud         Float?
+  longitud        Float?
+  
+  // Notas
+  notas           String?
+  
+  // Horas calculadas
+  horasTrabajadas Float?
+  
+  // Sincronización
+  syncSheets      Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  
+  @@unique([empleadoId, fecha, tipo])
+  @@index([fecha])
+  @@index([empleadoId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// RESUMEN DIARIO
+// ─────────────────────────────────────────────────────────────
+
+model ResumenDiario {
+  id                  String   @id @default(uuid())
+  fecha               String   @unique
+  empleadoId          String
+  
+  horaEntrada         String?
+  horaSalida          String?
+  horasTrabajadas     Float?
+  llegoTarde          Boolean  @default(false)
+  minutosRetraso      Int      @default(0)
+  falta               Boolean  @default(false)
+  
+  createdAt           DateTime @default(now())
+  
+  @@unique([fecha, empleadoId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// NOTIFICACIONES
+// ─────────────────────────────────────────────────────────────
+
+model Notificacion {
+  id            String   @id @default(uuid())
+  tipo          String   // EMAIL, TELEGRAM, WHATSAPP
+  destino       String
+  asunto        String?
+  mensaje       String
+  enviado       Boolean  @default(false)
+  error         String?
+  createdAt     DateTime @default(now())
+}

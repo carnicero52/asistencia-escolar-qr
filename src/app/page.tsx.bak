@@ -1,0 +1,1489 @@
+'use client';
+
+// Sistema de Inventario Profesional - v1.0
+import { useState, useEffect } from 'react';
+import { 
+  Package, ShoppingCart, TrendingUp, AlertTriangle, 
+  Plus, Search, Edit, Trash2, Download, Upload,
+  Bell, Settings, BarChart3, ArrowUpRight, ArrowDownRight,
+  X, Save, Eye, EyeOff, RefreshCw
+} from 'lucide-react';
+
+// ─────────────────────────────────────────────────────────────
+// TIPOS
+// ─────────────────────────────────────────────────────────────
+
+interface Producto {
+  id: string;
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  categoria: string;
+  stock: number;
+  stockMinimo: number;
+  precioCompra: number;
+  precioVenta: number;
+  gananciaPorcentaje: number;
+  gananciaMonto: number;
+  proveedor?: string;
+  ubicacion?: string;
+  codigoBarras?: string;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Venta {
+  id: string;
+  numeroVenta: string;
+  cliente?: string;
+  subtotal: number;
+  impuestos: number;
+  descuento: number;
+  total: number;
+  gananciaTotal: number;
+  metodoPago: string;
+  estado: string;
+  createdAt: string;
+  detalles: DetalleVenta[];
+}
+
+interface DetalleVenta {
+  id: string;
+  productoId: string;
+  producto: Producto;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+}
+
+interface Compra {
+  id: string;
+  numeroCompra: string;
+  proveedor?: string;
+  subtotal: number;
+  impuestos: number;
+  total: number;
+  estado: string;
+  createdAt: string;
+  detalles: DetalleCompra[];
+}
+
+interface DetalleCompra {
+  id: string;
+  productoId: string;
+  producto: Producto;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+}
+
+interface Movimiento {
+  id: string;
+  tipo: string;
+  productoId: string;
+  producto: Producto;
+  cantidad: number;
+  stockAnterior: number;
+  stockNuevo: number;
+  precioUnitario: number;
+  total: number;
+  motivo?: string;
+  createdAt: string;
+}
+
+interface Alerta {
+  id: string;
+  tipo: string;
+  productoId?: string;
+  mensaje: string;
+  leida: boolean;
+  createdAt: string;
+}
+
+interface Configuracion {
+  nombreNegocio: string;
+  emailPropietario: string;
+  telegramBotToken: string;
+  telegramChatId: string;
+  stockMinimoGlobal: number;
+  porcentajeGanancia: number;
+  moneda: string;
+  notificacionesEmail: boolean;
+  notificacionesTelegram: boolean;
+}
+
+interface Dashboard {
+  totalProductos: number;
+  productosStockBajo: number;
+  productosSinStock: number;
+  valorInventario: number;
+  valorVenta: number;
+  gananciaPotencial: number;
+  ventas: {
+    mes: { cantidad: number; total: number; ganancia: number };
+    hoy: { cantidad: number; total: number };
+  };
+  compras: {
+    mes: { cantidad: number; total: number };
+  };
+  productosMasVendidos: { nombre: string; cantidad: number; total: number }[];
+  categorias: Record<string, { cantidad: number; valor: number }>;
+  ultimasVentas: Venta[];
+  alertas: Alerta[];
+  movimientosRecientes: Movimiento[];
+}
+
+// ─────────────────────────────────────────────────────────────
+// COMPONENTE PRINCIPAL
+// ─────────────────────────────────────────────────────────────
+
+export default function SistemaInventario() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [ventas, setVentas] = useState<Venta[]>([]);
+  const [compras, setCompras] = useState<Compra[]>([]);
+  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [config, setConfig] = useState<Configuracion | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showModal, setShowModal] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [toast, setToast] = useState<{ message: string; type: string } | null>(null);
+
+  // Cargar datos iniciales
+  useEffect(() => {
+    cargarDashboard();
+    cargarProductos();
+    cargarConfig();
+  }, []);
+
+  // Funciones de carga
+  const cargarDashboard = async () => {
+    try {
+      const res = await fetch('/api/dashboard');
+      const data = await res.json();
+      setDashboard(data);
+    } catch (error) {
+      console.error('Error cargando dashboard:', error);
+    }
+  };
+
+  const cargarProductos = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/productos');
+      const data = await res.json();
+      setProductos(data);
+    } catch (error) {
+      console.error('Error cargando productos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cargarVentas = async () => {
+    try {
+      const res = await fetch('/api/ventas');
+      const data = await res.json();
+      setVentas(data);
+    } catch (error) {
+      console.error('Error cargando ventas:', error);
+    }
+  };
+
+  const cargarCompras = async () => {
+    try {
+      const res = await fetch('/api/compras');
+      const data = await res.json();
+      setCompras(data);
+    } catch (error) {
+      console.error('Error cargando compras:', error);
+    }
+  };
+
+  const cargarMovimientos = async () => {
+    try {
+      const res = await fetch('/api/movimientos');
+      const data = await res.json();
+      setMovimientos(data);
+    } catch (error) {
+      console.error('Error cargando movimientos:', error);
+    }
+  };
+
+  const cargarAlertas = async () => {
+    try {
+      const res = await fetch('/api/alertas');
+      const data = await res.json();
+      setAlertas(data);
+    } catch (error) {
+      console.error('Error cargando alertas:', error);
+    }
+  };
+
+  const cargarConfig = async () => {
+    try {
+      const res = await fetch('/api/configuracion');
+      const data = await res.json();
+      setConfig(data);
+    } catch (error) {
+      console.error('Error cargando configuración:', error);
+    }
+  };
+
+  // Utilidades
+  const formatCurrency = (value: number) => {
+    return `${config?.moneda || '$'}${value.toFixed(2)}`;
+  };
+
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const showToast = (message: string, type: string = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const productosFiltrados = productos.filter(p => 
+    p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.categoria.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // ─────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Header */}
+      <header className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                <Package className="w-6 h-6" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold">{config?.nombreNegocio || 'Sistema de Inventario'}</h1>
+                <p className="text-emerald-100 text-sm">Control total de tu negocio</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setShowModal('nueva-venta')}
+                className="px-4 py-2 bg-white text-emerald-600 rounded-lg font-medium hover:bg-emerald-50 transition flex items-center gap-2"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                Nueva Venta
+              </button>
+              <button 
+                onClick={() => setShowModal('nueva-compra')}
+                className="px-4 py-2 bg-white/20 text-white rounded-lg font-medium hover:bg-white/30 transition flex items-center gap-2"
+              >
+                <ArrowDownRight className="w-4 h-4" />
+                Nueva Compra
+              </button>
+              <button 
+                onClick={() => { cargarDashboard(); cargarProductos(); }}
+                className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition"
+              >
+                <RefreshCw className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Navigation */}
+      <nav className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex gap-1 overflow-x-auto">
+            {[
+              { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+              { id: 'productos', label: 'Productos', icon: Package },
+              { id: 'ventas', label: 'Ventas', icon: TrendingUp },
+              { id: 'compras', label: 'Compras', icon: ShoppingCart },
+              { id: 'movimientos', label: 'Movimientos', icon: ArrowUpRight },
+              { id: 'alertas', label: 'Alertas', icon: AlertTriangle, badge: dashboard?.alertas?.length },
+              { id: 'configuracion', label: 'Configuración', icon: Settings },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  if (tab.id === 'ventas') cargarVentas();
+                  if (tab.id === 'compras') cargarCompras();
+                  if (tab.id === 'movimientos') cargarMovimientos();
+                  if (tab.id === 'alertas') cargarAlertas();
+                }}
+                className={`px-4 py-3 font-medium text-sm flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'border-emerald-600 text-emerald-600'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+                {tab.badge && tab.badge > 0 && (
+                  <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        {loading && !dashboard ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+          </div>
+        ) : (
+          <>
+            {/* Dashboard Tab */}
+            {activeTab === 'dashboard' && dashboard && (
+              <div className="space-y-6">
+                {/* KPIs */}
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  <KPICard
+                    title="Productos"
+                    value={dashboard.totalProductos}
+                    icon={Package}
+                    color="blue"
+                  />
+                  <KPICard
+                    title="Valor Inventario"
+                    value={formatCurrency(dashboard.valorInventario)}
+                    icon={Package}
+                    color="green"
+                  />
+                  <KPICard
+                    title="Ganancia Potencial"
+                    value={formatCurrency(dashboard.gananciaPotencial)}
+                    icon={TrendingUp}
+                    color="emerald"
+                  />
+                  <KPICard
+                    title="Ventas Hoy"
+                    value={formatCurrency(dashboard.ventas.hoy.total)}
+                    subtitle={`${dashboard.ventas.hoy.cantidad} ventas`}
+                    icon={TrendingUp}
+                    color="purple"
+                  />
+                  <KPICard
+                    title="Stock Bajo"
+                    value={dashboard.productosStockBajo}
+                    icon={AlertTriangle}
+                    color="yellow"
+                    alert
+                  />
+                  <KPICard
+                    title="Sin Stock"
+                    value={dashboard.productosSinStock}
+                    icon={AlertTriangle}
+                    color="red"
+                    alert
+                  />
+                </div>
+
+                {/* Charts Row */}
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Productos más vendidos */}
+                  <div className="bg-white rounded-xl shadow-sm border p-6">
+                    <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-emerald-600" />
+                      Productos Más Vendidos
+                    </h3>
+                    {dashboard.productosMasVendidos.length > 0 ? (
+                      <div className="space-y-3">
+                        {dashboard.productosMasVendidos.map((p, i) => (
+                          <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <span className="w-6 h-6 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-sm font-medium">
+                                {i + 1}
+                              </span>
+                              <span className="font-medium">{p.nombre}</span>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold">{p.cantidad} uds</p>
+                              <p className="text-sm text-slate-500">{formatCurrency(p.total)}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-slate-500 text-center py-8">Sin ventas registradas este mes</p>
+                    )}
+                  </div>
+
+                  {/* Por Categoría */}
+                  <div className="bg-white rounded-xl shadow-sm border p-6">
+                    <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-emerald-600" />
+                      Por Categoría
+                    </h3>
+                    {Object.keys(dashboard.categorias).length > 0 ? (
+                      <div className="space-y-3">
+                        {Object.entries(dashboard.categorias).map(([cat, data]) => (
+                          <div key={cat} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                            <span className="font-medium">{cat}</span>
+                            <div className="text-right">
+                              <p className="font-semibold">{data.cantidad} productos</p>
+                              <p className="text-sm text-slate-500">{formatCurrency(data.valor)}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-slate-500 text-center py-8">Sin categorías</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Movimientos recientes */}
+                <div className="bg-white rounded-xl shadow-sm border p-6">
+                  <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <ArrowUpRight className="w-5 h-5 text-emerald-600" />
+                    Movimientos Recientes
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="text-left text-sm text-slate-500 border-b">
+                          <th className="pb-3 font-medium">Fecha</th>
+                          <th className="pb-3 font-medium">Tipo</th>
+                          <th className="pb-3 font-medium">Producto</th>
+                          <th className="pb-3 font-medium">Cantidad</th>
+                          <th className="pb-3 font-medium">Stock</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dashboard.movimientosRecientes.slice(0, 5).map((m) => (
+                          <tr key={m.id} className="border-b last:border-0">
+                            <td className="py-3 text-sm">{formatDate(m.createdAt)}</td>
+                            <td className="py-3">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                m.tipo === 'ENTRADA' ? 'bg-green-100 text-green-700' : 
+                                m.tipo === 'SALIDA' ? 'bg-red-100 text-red-700' : 
+                                'bg-blue-100 text-blue-700'
+                              }`}>
+                                {m.tipo}
+                              </span>
+                            </td>
+                            <td className="py-3 font-medium">{m.producto.nombre}</td>
+                            <td className="py-3">{m.cantidad}</td>
+                            <td className="py-3">{m.stockNuevo}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Productos Tab */}
+            {activeTab === 'productos' && (
+              <div className="bg-white rounded-xl shadow-sm border">
+                <div className="p-4 border-b flex flex-wrap items-center justify-between gap-4">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar productos..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => { setSelectedItem(null); setShowModal('producto'); }}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Nuevo Producto
+                    </button>
+                    <button
+                      onClick={() => window.open('/api/exportar/productos', '_blank')}
+                      className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition flex items-center gap-2"
+                    >
+                      <Download className="w-4 h-4" />
+                      Exportar CSV
+                    </button>
+                    <label className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition flex items-center gap-2 cursor-pointer">
+                      <Upload className="w-4 h-4" />
+                      Importar CSV
+                      <input
+                        type="file"
+                        accept=".csv"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          
+                          const text = await file.text();
+                          const lines = text.split('\n');
+                          const headers = lines[0].split(',').map(h => h.replace(/"/g, ''));
+                          const productos = lines.slice(1).filter(l => l.trim()).map(line => {
+                            const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+                            const obj: any = {};
+                            headers.forEach((h, i) => {
+                              obj[h] = (values[i] || '').replace(/"/g, '').trim();
+                            });
+                            return obj;
+                          });
+                          
+                          const res = await fetch('/api/exportar/productos', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ productos })
+                          });
+                          const data = await res.json();
+                          showToast(data.mensaje);
+                          cargarProductos();
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-sm text-slate-500">
+                        <th className="px-4 py-3 font-medium">Código</th>
+                        <th className="px-4 py-3 font-medium">Nombre</th>
+                        <th className="px-4 py-3 font-medium">Categoría</th>
+                        <th className="px-4 py-3 font-medium">Stock</th>
+                        <th className="px-4 py-3 font-medium">P. Compra</th>
+                        <th className="px-4 py-3 font-medium">P. Venta</th>
+                        <th className="px-4 py-3 font-medium">Ganancia</th>
+                        <th className="px-4 py-3 font-medium">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productosFiltrados.map((p) => (
+                        <tr key={p.id} className="border-b hover:bg-slate-50">
+                          <td className="px-4 py-3">
+                            <code className="text-xs bg-slate-100 px-2 py-1 rounded">{p.codigo}</code>
+                          </td>
+                          <td className="px-4 py-3 font-medium">{p.nombre}</td>
+                          <td className="px-4 py-3 text-slate-600">{p.categoria}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              p.stock === 0 ? 'bg-red-100 text-red-700' :
+                              p.stock <= p.stockMinimo ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-green-100 text-green-700'
+                            }`}>
+                              {p.stock} {p.stock <= p.stockMinimo && '⚠️'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">{formatCurrency(p.precioCompra)}</td>
+                          <td className="px-4 py-3">{formatCurrency(p.precioVenta)}</td>
+                          <td className="px-4 py-3 text-emerald-600 font-medium">
+                            {formatCurrency(p.gananciaMonto)} ({p.gananciaPorcentaje}%)
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => { setSelectedItem(p); setShowModal('producto'); }}
+                                className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (confirm('¿Eliminar este producto?')) {
+                                    await fetch(`/api/productos?id=${p.id}`, { method: 'DELETE' });
+                                    cargarProductos();
+                                    showToast('Producto eliminado');
+                                  }
+                                }}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Ventas Tab */}
+            {activeTab === 'ventas' && (
+              <div className="bg-white rounded-xl shadow-sm border">
+                <div className="p-4 border-b flex items-center justify-between flex-wrap gap-2">
+                  <h3 className="font-semibold">Historial de Ventas</h3>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => window.open('/api/exportar/ventas', '_blank')}
+                      className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition flex items-center gap-2"
+                    >
+                      <Download className="w-4 h-4" />
+                      Exportar
+                    </button>
+                    <button
+                      onClick={() => setShowModal('nueva-venta')}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Nueva Venta
+                    </button>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-sm text-slate-500">
+                        <th className="px-4 py-3 font-medium">Nº Venta</th>
+                        <th className="px-4 py-3 font-medium">Fecha</th>
+                        <th className="px-4 py-3 font-medium">Cliente</th>
+                        <th className="px-4 py-3 font-medium">Total</th>
+                        <th className="px-4 py-3 font-medium">Ganancia</th>
+                        <th className="px-4 py-3 font-medium">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ventas.map((v) => (
+                        <tr key={v.id} className="border-b hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium">{v.numeroVenta}</td>
+                          <td className="px-4 py-3 text-sm">{formatDate(v.createdAt)}</td>
+                          <td className="px-4 py-3">{v.cliente || '-'}</td>
+                          <td className="px-4 py-3 font-semibold">{formatCurrency(v.total)}</td>
+                          <td className="px-4 py-3 text-emerald-600 font-medium">{formatCurrency(v.gananciaTotal)}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              v.estado === 'Completada' ? 'bg-green-100 text-green-700' :
+                              v.estado === 'Pendiente' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {v.estado}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Compras Tab */}
+            {activeTab === 'compras' && (
+              <div className="bg-white rounded-xl shadow-sm border">
+                <div className="p-4 border-b flex items-center justify-between">
+                  <h3 className="font-semibold">Historial de Compras</h3>
+                  <button
+                    onClick={() => setShowModal('nueva-compra')}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Nueva Compra
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-sm text-slate-500">
+                        <th className="px-4 py-3 font-medium">Nº Compra</th>
+                        <th className="px-4 py-3 font-medium">Fecha</th>
+                        <th className="px-4 py-3 font-medium">Proveedor</th>
+                        <th className="px-4 py-3 font-medium">Total</th>
+                        <th className="px-4 py-3 font-medium">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {compras.map((c) => (
+                        <tr key={c.id} className="border-b hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium">{c.numeroCompra}</td>
+                          <td className="px-4 py-3 text-sm">{formatDate(c.createdAt)}</td>
+                          <td className="px-4 py-3">{c.proveedor || '-'}</td>
+                          <td className="px-4 py-3 font-semibold">{formatCurrency(c.total)}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              c.estado === 'Recibida' ? 'bg-green-100 text-green-700' :
+                              'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {c.estado}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Movimientos Tab */}
+            {activeTab === 'movimientos' && (
+              <div className="bg-white rounded-xl shadow-sm border">
+                <div className="p-4 border-b flex items-center justify-between">
+                  <h3 className="font-semibold">Historial de Movimientos</h3>
+                  <button
+                    onClick={() => window.open('/api/exportar/movimientos', '_blank')}
+                    className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Exportar CSV
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-sm text-slate-500">
+                        <th className="px-4 py-3 font-medium">Fecha</th>
+                        <th className="px-4 py-3 font-medium">Tipo</th>
+                        <th className="px-4 py-3 font-medium">Producto</th>
+                        <th className="px-4 py-3 font-medium">Cantidad</th>
+                        <th className="px-4 py-3 font-medium">Stock Ant.</th>
+                        <th className="px-4 py-3 font-medium">Stock Nuevo</th>
+                        <th className="px-4 py-3 font-medium">Motivo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {movimientos.map((m) => (
+                        <tr key={m.id} className="border-b hover:bg-slate-50">
+                          <td className="px-4 py-3 text-sm">{formatDate(m.createdAt)}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              m.tipo === 'ENTRADA' ? 'bg-green-100 text-green-700' : 
+                              m.tipo === 'SALIDA' ? 'bg-red-100 text-red-700' : 
+                              'bg-blue-100 text-blue-700'
+                            }`}>
+                              {m.tipo}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-medium">{m.producto?.nombre || '-'}</td>
+                          <td className="px-4 py-3">{m.cantidad}</td>
+                          <td className="px-4 py-3">{m.stockAnterior}</td>
+                          <td className="px-4 py-3">{m.stockNuevo}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{m.motivo || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Alertas Tab */}
+            {activeTab === 'alertas' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-semibold text-lg">Alertas de Inventario</h3>
+                  <button
+                    onClick={async () => {
+                      await fetch('/api/notificaciones');
+                      showToast('Alertas enviadas por Telegram');
+                    }}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 transition flex items-center gap-2"
+                  >
+                    <Bell className="w-4 h-4" />
+                    Enviar Alertas
+                  </button>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                  {alertas.length > 0 ? (
+                    <div className="divide-y">
+                      {alertas.map((a) => (
+                        <div key={a.id} className={`p-4 flex items-center gap-4 ${a.leida ? 'bg-slate-50' : 'bg-white'}`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            a.tipo === 'SIN_STOCK' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'
+                          }`}>
+                            <AlertTriangle className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium">{a.mensaje}</p>
+                            <p className="text-sm text-slate-500">{formatDate(a.createdAt)}</p>
+                          </div>
+                          {!a.leida && (
+                            <button
+                              onClick={async () => {
+                                await fetch('/api/alertas', {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ id: a.id })
+                                });
+                                cargarAlertas();
+                              }}
+                              className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-sm hover:bg-slate-200"
+                            >
+                              Marcar leída
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-slate-500">
+                      <Bell className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                      <p>No hay alertas pendientes</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Configuración Tab */}
+            {activeTab === 'configuracion' && config && (
+              <div className="max-w-2xl mx-auto">
+                <div className="bg-white rounded-xl shadow-sm border p-6">
+                  <h3 className="font-semibold text-lg mb-6">Configuración del Negocio</h3>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    await fetch('/api/configuracion', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(config)
+                    });
+                    showToast('Configuración guardada');
+                  }}>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del Negocio</label>
+                        <input
+                          type="text"
+                          value={config.nombreNegocio}
+                          onChange={(e) => setConfig({ ...config, nombreNegocio: e.target.value })}
+                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Email del Propietario</label>
+                        <input
+                          type="email"
+                          value={config.emailPropietario}
+                          onChange={(e) => setConfig({ ...config, emailPropietario: e.target.value })}
+                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Chat ID de Telegram</label>
+                        <input
+                          type="text"
+                          value={config.telegramChatId}
+                          onChange={(e) => setConfig({ ...config, telegramChatId: e.target.value })}
+                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Stock Mínimo Global</label>
+                          <input
+                            type="number"
+                            value={config.stockMinimoGlobal}
+                            onChange={(e) => setConfig({ ...config, stockMinimoGlobal: parseInt(e.target.value) })}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">% Ganancia Default</label>
+                          <input
+                            type="number"
+                            value={config.porcentajeGanancia}
+                            onChange={(e) => setConfig({ ...config, porcentajeGanancia: parseInt(e.target.value) })}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Moneda</label>
+                        <input
+                          type="text"
+                          value={config.moneda}
+                          onChange={(e) => setConfig({ ...config, moneda: e.target.value })}
+                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={config.notificacionesTelegram}
+                            onChange={(e) => setConfig({ ...config, notificacionesTelegram: e.target.checked })}
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="text-sm">Notificaciones por Telegram</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={config.notificacionesEmail}
+                            onChange={(e) => setConfig({ ...config, notificacionesEmail: e.target.checked })}
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="text-sm">Notificaciones por Email</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="mt-6">
+                      <button
+                        type="submit"
+                        className="w-full px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition flex items-center justify-center gap-2"
+                      >
+                        <Save className="w-4 h-4" />
+                        Guardar Configuración
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+
+      {/* Modals */}
+      {showModal && (
+        <Modal onClose={() => setShowModal(null)} title={
+          showModal === 'producto' ? (selectedItem ? 'Editar Producto' : 'Nuevo Producto') :
+          showModal === 'nueva-venta' ? 'Nueva Venta' :
+          showModal === 'nueva-compra' ? 'Nueva Compra' : ''
+        }>
+          {showModal === 'producto' && (
+            <ProductoForm
+              producto={selectedItem}
+              config={config}
+              onSave={async (data) => {
+                const method = selectedItem ? 'PUT' : 'POST';
+                await fetch('/api/productos', {
+                  method,
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(data)
+                });
+                setShowModal(null);
+                cargarProductos();
+                cargarDashboard();
+                showToast(selectedItem ? 'Producto actualizado' : 'Producto creado');
+              }}
+              onCancel={() => setShowModal(null)}
+            />
+          )}
+          {showModal === 'nueva-venta' && (
+            <VentaForm
+              productos={productos}
+              config={config}
+              onSave={async (data) => {
+                await fetch('/api/ventas', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(data)
+                });
+                setShowModal(null);
+                cargarProductos();
+                cargarDashboard();
+                cargarVentas();
+                showToast('Venta registrada');
+              }}
+              onCancel={() => setShowModal(null)}
+            />
+          )}
+          {showModal === 'nueva-compra' && (
+            <CompraForm
+              productos={productos}
+              config={config}
+              onSave={async (data) => {
+                await fetch('/api/compras', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(data)
+                });
+                setShowModal(null);
+                cargarProductos();
+                cargarDashboard();
+                cargarCompras();
+                showToast('Compra registrada');
+              }}
+              onCancel={() => setShowModal(null)}
+            />
+          )}
+        </Modal>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white font-medium z-50 ${
+          toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// COMPONENTES AUXILIARES
+// ─────────────────────────────────────────────────────────────
+
+function KPICard({ title, value, subtitle, icon: Icon, color, alert }: {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon: any;
+  color: string;
+  alert?: boolean;
+}) {
+  const colors: Record<string, string> = {
+    blue: 'bg-blue-50 text-blue-600',
+    green: 'bg-green-50 text-green-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+    purple: 'bg-purple-50 text-purple-600',
+    yellow: 'bg-yellow-50 text-yellow-600',
+    red: 'bg-red-50 text-red-600',
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border p-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm text-slate-500">{title}</p>
+          <p className={`text-2xl font-bold mt-1 ${alert ? 'text-red-600' : ''}`}>{value}</p>
+          {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
+        </div>
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colors[color]}`}>
+          <Icon className="w-5 h-5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Modal({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white">
+          <h3 className="font-semibold text-lg">{title}</h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-4">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductoForm({ producto, config, onSave, onCancel }: {
+  producto?: Producto | null;
+  config: Configuracion | null;
+  onSave: (data: any) => void;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState({
+    id: producto?.id || '',
+    codigo: producto?.codigo || '',
+    nombre: producto?.nombre || '',
+    descripcion: producto?.descripcion || '',
+    categoria: producto?.categoria || 'General',
+    stock: producto?.stock || 0,
+    stockMinimo: producto?.stockMinimo || config?.stockMinimoGlobal || 5,
+    precioCompra: producto?.precioCompra || 0,
+    gananciaPorcentaje: producto?.gananciaPorcentaje || config?.porcentajeGanancia || 30,
+    proveedor: producto?.proveedor || '',
+    ubicacion: producto?.ubicacion || '',
+    codigoBarras: producto?.codigoBarras || ''
+  });
+
+  const precioVenta = form.precioCompra * (1 + form.gananciaPorcentaje / 100);
+  const gananciaMonto = precioVenta - form.precioCompra;
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSave(form); }} className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Código</label>
+          <input
+            type="text"
+            value={form.codigo}
+            onChange={(e) => setForm({ ...form, codigo: e.target.value })}
+            placeholder="Auto-generado"
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
+          <input
+            type="text"
+            value={form.nombre}
+            onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+            required
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Descripción</label>
+        <input
+          type="text"
+          value={form.descripcion}
+          onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Categoría</label>
+          <input
+            type="text"
+            value={form.categoria}
+            onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Proveedor</label>
+          <input
+            type="text"
+            value={form.proveedor}
+            onChange={(e) => setForm({ ...form, proveedor: e.target.value })}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Stock Inicial</label>
+          <input
+            type="number"
+            value={form.stock}
+            onChange={(e) => setForm({ ...form, stock: parseInt(e.target.value) || 0 })}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Stock Mínimo</label>
+          <input
+            type="number"
+            value={form.stockMinimo}
+            onChange={(e) => setForm({ ...form, stockMinimo: parseInt(e.target.value) || 5 })}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Precio Compra *</label>
+          <input
+            type="number"
+            step="0.01"
+            value={form.precioCompra}
+            onChange={(e) => setForm({ ...form, precioCompra: parseFloat(e.target.value) || 0 })}
+            required
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">% Ganancia</label>
+          <input
+            type="number"
+            value={form.gananciaPorcentaje}
+            onChange={(e) => setForm({ ...form, gananciaPorcentaje: parseInt(e.target.value) || 0 })}
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Precio Venta</label>
+          <input
+            type="text"
+            value={`${config?.moneda || '$'}${precioVenta.toFixed(2)}`}
+            readOnly
+            className="w-full px-3 py-2 border rounded-lg bg-slate-50"
+          />
+        </div>
+      </div>
+      <div className="p-3 bg-emerald-50 rounded-lg">
+        <p className="text-sm text-emerald-700">
+          <strong>Ganancia por unidad:</strong> {config?.moneda || '$'}{gananciaMonto.toFixed(2)}
+        </p>
+      </div>
+      <div className="flex gap-2 pt-4">
+        <button type="button" onClick={onCancel} className="flex-1 px-4 py-2 border rounded-lg hover:bg-slate-50">
+          Cancelar
+        </button>
+        <button type="submit" className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+          Guardar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function VentaForm({ productos, config, onSave, onCancel }: {
+  productos: Producto[];
+  config: Configuracion | null;
+  onSave: (data: any) => void;
+  onCancel: () => void;
+}) {
+  const [detalles, setDetalles] = useState([{ productoId: '', cantidad: 1, precioUnitario: 0 }]);
+  const [cliente, setCliente] = useState('');
+  const [metodoPago, setMetodoPago] = useState('Efectivo');
+
+  const agregarDetalle = () => {
+    setDetalles([...detalles, { productoId: '', cantidad: 1, precioUnitario: 0 }]);
+  };
+
+  const actualizarDetalle = (index: number, field: string, value: any) => {
+    const nuevos = [...detalles];
+    nuevos[index] = { ...nuevos[index], [field]: value };
+    
+    if (field === 'productoId') {
+      const prod = productos.find(p => p.id === value);
+      if (prod) {
+        nuevos[index].precioUnitario = prod.precioVenta;
+      }
+    }
+    setDetalles(nuevos);
+  };
+
+  const eliminarDetalle = (index: number) => {
+    setDetalles(detalles.filter((_, i) => i !== index));
+  };
+
+  const subtotal = detalles.reduce((sum, d) => {
+    const prod = productos.find(p => p.id === d.productoId);
+    return sum + (d.cantidad * (d.precioUnitario || prod?.precioVenta || 0));
+  }, 0);
+
+  const handleSubmit = () => {
+    const detallesValidos = detalles.filter(d => d.productoId && d.cantidad > 0);
+    if (detallesValidos.length === 0) return;
+
+    onSave({
+      cliente,
+      metodoPago,
+      detalles: detallesValidos.map(d => ({
+        productoId: d.productoId,
+        cantidad: d.cantidad,
+        precioUnitario: d.precioUnitario
+      }))
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Cliente (opcional)</label>
+        <input
+          type="text"
+          value={cliente}
+          onChange={(e) => setCliente(e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          placeholder="Nombre del cliente"
+        />
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-2">Productos</label>
+        <div className="space-y-2">
+          {detalles.map((d, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <select
+                value={d.productoId}
+                onChange={(e) => actualizarDetalle(i, 'productoId', e.target.value)}
+                className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">Seleccionar producto</option>
+                {productos.filter(p => p.stock > 0).map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre} ({p.stock} uds) - {config?.moneda || '$'}{p.precioVenta}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                value={d.cantidad}
+                onChange={(e) => actualizarDetalle(i, 'cantidad', parseInt(e.target.value) || 1)}
+                min="1"
+                className="w-20 px-3 py-2 border rounded-lg"
+              />
+              <input
+                type="number"
+                value={d.precioUnitario}
+                onChange={(e) => actualizarDetalle(i, 'precioUnitario', parseFloat(e.target.value) || 0)}
+                step="0.01"
+                className="w-24 px-3 py-2 border rounded-lg"
+              />
+              {detalles.length > 1 && (
+                <button type="button" onClick={() => eliminarDetalle(i)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={agregarDetalle} className="mt-2 text-sm text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+          <Plus className="w-4 h-4" /> Agregar otro producto
+        </button>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Método de Pago</label>
+        <select
+          value={metodoPago}
+          onChange={(e) => setMetodoPago(e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+        >
+          <option value="Efectivo">Efectivo</option>
+          <option value="Tarjeta">Tarjeta</option>
+          <option value="Transferencia">Transferencia</option>
+          <option value="Yape/Plin">Yape/Plin</option>
+        </select>
+      </div>
+
+      <div className="p-4 bg-slate-50 rounded-lg">
+        <div className="flex justify-between text-lg font-semibold">
+          <span>Total:</span>
+          <span>{config?.moneda || '$'}{subtotal.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-4">
+        <button type="button" onClick={onCancel} className="flex-1 px-4 py-2 border rounded-lg hover:bg-slate-50">
+          Cancelar
+        </button>
+        <button type="button" onClick={handleSubmit} className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+          Registrar Venta
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CompraForm({ productos, config, onSave, onCancel }: {
+  productos: Producto[];
+  config: Configuracion | null;
+  onSave: (data: any) => void;
+  onCancel: () => void;
+}) {
+  const [detalles, setDetalles] = useState([{ productoId: '', cantidad: 1, precioUnitario: 0 }]);
+  const [proveedor, setProveedor] = useState('');
+
+  const actualizarDetalle = (index: number, field: string, value: any) => {
+    const nuevos = [...detalles];
+    nuevos[index] = { ...nuevos[index], [field]: value };
+    
+    if (field === 'productoId') {
+      const prod = productos.find(p => p.id === value);
+      if (prod) {
+        nuevos[index].precioUnitario = prod.precioCompra;
+      }
+    }
+    setDetalles(nuevos);
+  };
+
+  const subtotal = detalles.reduce((sum, d) => sum + (d.cantidad * d.precioUnitario), 0);
+
+  const handleSubmit = () => {
+    const detallesValidos = detalles.filter(d => d.productoId && d.cantidad > 0);
+    if (detallesValidos.length === 0) return;
+
+    onSave({
+      proveedor,
+      detalles: detallesValidos.map(d => ({
+        productoId: d.productoId,
+        cantidad: d.cantidad,
+        precioUnitario: d.precioUnitario
+      }))
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Proveedor (opcional)</label>
+        <input
+          type="text"
+          value={proveedor}
+          onChange={(e) => setProveedor(e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+          placeholder="Nombre del proveedor"
+        />
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-2">Productos</label>
+        <div className="space-y-2">
+          {detalles.map((d, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <select
+                value={d.productoId}
+                onChange={(e) => actualizarDetalle(i, 'productoId', e.target.value)}
+                className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Seleccionar producto</option>
+                {productos.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre} - Stock: {p.stock}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                value={d.cantidad}
+                onChange={(e) => actualizarDetalle(i, 'cantidad', parseInt(e.target.value) || 1)}
+                min="1"
+                className="w-20 px-3 py-2 border rounded-lg"
+              />
+              <input
+                type="number"
+                value={d.precioUnitario}
+                onChange={(e) => actualizarDetalle(i, 'precioUnitario', parseFloat(e.target.value) || 0)}
+                step="0.01"
+                className="w-24 px-3 py-2 border rounded-lg"
+                placeholder="Precio"
+              />
+            </div>
+          ))}
+        </div>
+        <button 
+          type="button" 
+          onClick={() => setDetalles([...detalles, { productoId: '', cantidad: 1, precioUnitario: 0 }])} 
+          className="mt-2 text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+        >
+          <Plus className="w-4 h-4" /> Agregar otro producto
+        </button>
+      </div>
+
+      <div className="p-4 bg-slate-50 rounded-lg">
+        <div className="flex justify-between text-lg font-semibold">
+          <span>Total:</span>
+          <span>{config?.moneda || '$'}{subtotal.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-4">
+        <button type="button" onClick={onCancel} className="flex-1 px-4 py-2 border rounded-lg hover:bg-slate-50">
+          Cancelar
+        </button>
+        <button type="button" onClick={handleSubmit} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+          Registrar Compra
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 
