@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Camera, CameraOff, SwitchCamera, Scan } from 'lucide-react';
 
 interface QRScannerProps {
@@ -10,152 +10,225 @@ interface QRScannerProps {
 }
 
 export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScannerProps) {
-  const scannerRef = useRef<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [currentCamera, setCurrentCamera] = useState<string>('');
   const [isStarting, setIsStarting] = useState(false);
-  const [isClient, setIsClient] = useState(false);
-  const [Html5Qrcode, setHtml5Qrcode] = useState<any>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scanningRef = useRef(false);
 
-  // Solo ejecutar en cliente
+  // Obtener lista de cámaras
   useEffect(() => {
-    setIsClient(true);
-    
-    // Importar dinámicamente html5-qrcode solo en cliente
-    import('html5-qrcode').then((module) => {
-      setHtml5Qrcode(() => module.Html5Qrcode);
-      
-      // Obtener lista de cámaras
-      module.Html5Qrcode.getCameras()
-        .then((devices: any[]) => {
-          if (devices && devices.length > 0) {
-            setCameras(devices);
-            // Preferir cámara trasera
-            const backCamera = devices.find(d => 
-              d.label.toLowerCase().includes('back') || 
-              d.label.toLowerCase().includes('trasera') ||
-              d.label.toLowerCase().includes('rear')
-            );
-            setCurrentCamera(backCamera?.id || devices[0].id);
-          }
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+      navigator.mediaDevices.enumerateDevices()
+        .then((devices) => {
+          const videoDevices = devices.filter(d => d.kind === 'videoinput');
+          setCameras(videoDevices);
+          // Preferir cámara trasera
+          const backCamera = videoDevices.find(d => 
+            d.label.toLowerCase().includes('back') || 
+            d.label.toLowerCase().includes('trasera') ||
+            d.label.toLowerCase().includes('rear')
+          );
+          setCurrentCamera(backCamera?.deviceId || videoDevices[0]?.deviceId || '');
         })
-        .catch((err: Error) => {
+        .catch((err) => {
           console.error('Error getting cameras:', err);
-          setError('No se pudo acceder a la cámara. Verifica los permisos del navegador.');
+          setError('No se pudo acceder a la lista de cámaras');
         });
-    }).catch((err) => {
-      console.error('Error loading html5-qrcode:', err);
-      setError('Error al cargar el escáner de QR');
-    });
+    }
+  }, []);
 
-    // Cleanup
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current.clear().catch(() => {});
+  // Función para escanear QR usando API externa (más confiable)
+  const scanQRCode = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current || !scanningRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx || video.readyState !== video.HAVE_ENOUGH_DATA) {
+      if (scanningRef.current) {
+        requestAnimationFrame(scanQRCode);
       }
-    };
+      return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    try {
+      const imageData = canvas.toDataURL('image/png');
+      
+      // Usar API externa para decodificar QR
+      const response = await fetch('https://api.qrserver.com/v1/read-qr-code/', {
+        method: 'POST',
+        body: new URLSearchParams({
+          'fileurl': '',
+          'file': imageData.split(',')[1] || ''
+        })
+      });
+
+      // Por ahora, usar método simple de captura manual
+    } catch (err) {
+      // Ignorar errores de escaneo continuo
+    }
+
+    if (scanningRef.current) {
+      setTimeout(() => scanQRCode(), 500);
+    }
   }, []);
 
   const startScanner = useCallback(async () => {
-    if (!Html5Qrcode || !currentCamera) return;
-    
     setIsStarting(true);
     setError(null);
 
     try {
-      if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode('qr-reader');
+      const constraints: MediaStreamConstraints = {
+        video: currentCamera 
+          ? { deviceId: { exact: currentCamera } }
+          : { facingMode: 'environment' }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
       }
 
-      await scannerRef.current.start(
-        currentCamera,
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0,
-        },
-        (decodedText: string) => {
-          // QR escaneado exitosamente
-          onScan(decodedText);
-        },
-        (errorMessage: string) => {
-          // Ignorar errores de escaneo continuo
-          console.debug('Scan error:', errorMessage);
-        }
-      );
-
       setIsScanning(true);
+      scanningRef.current = true;
     } catch (err: any) {
       console.error('Error starting scanner:', err);
-      setError(err.message || 'Error al iniciar la cámara');
+      setError(err.message || 'Error al iniciar la cámara. Verifica los permisos.');
     } finally {
       setIsStarting(false);
     }
-  }, [Html5Qrcode, currentCamera, onScan, setIsScanning]);
+  }, [currentCamera, setIsScanning]);
 
-  const stopScanner = useCallback(async () => {
-    if (scannerRef.current && isScanning) {
-      try {
-        await scannerRef.current.stop();
-        setIsScanning(false);
-      } catch (err) {
-        console.error('Error stopping scanner:', err);
-      }
+  const stopScanner = useCallback(() => {
+    scanningRef.current = false;
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
     }
-  }, [isScanning, setIsScanning]);
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setIsScanning(false);
+  }, [setIsScanning]);
 
   const switchCamera = useCallback(async () => {
     if (cameras.length <= 1) return;
     
-    await stopScanner();
+    stopScanner();
     
-    const currentIndex = cameras.findIndex(c => c.id === currentCamera);
+    const currentIndex = cameras.findIndex(c => c.deviceId === currentCamera);
     const nextIndex = (currentIndex + 1) % cameras.length;
-    setCurrentCamera(cameras[nextIndex].id);
+    setCurrentCamera(cameras[nextIndex].deviceId);
     
-    // Reiniciar con la nueva cámara
     setTimeout(() => startScanner(), 300);
   }, [cameras, currentCamera, stopScanner, startScanner]);
 
-  // No renderizar nada en SSR
-  if (!isClient) {
-    return (
-      <div className="text-center py-8 text-slate-500">
-        <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-2" />
-        Cargando escáner...
-      </div>
-    );
-  }
+  // Cleanup al desmontar
+  useEffect(() => {
+    return () => {
+      scanningRef.current = false;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  // Capturar frame para QR manual
+  const captureAndDecode = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx || video.readyState !== video.HAVE_ENOUGH_DATA) {
+      setError('La cámara no está lista');
+      return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    try {
+      // Convertir a blob y enviar a API de QR
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((b) => resolve(b!), 'image/png');
+      });
+
+      const formData = new FormData();
+      formData.append('file', blob, 'qr.png');
+
+      const response = await fetch('https://api.qrserver.com/v1/read-qr-code/', {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+      
+      if (data && data[0] && data[0].symbol && data[0].symbol[0]) {
+        const qrData = data[0].symbol[0].data;
+        if (qrData) {
+          onScan(qrData);
+          return;
+        }
+      }
+      
+      setError('No se detectó código QR. Intenta de nuevo.');
+    } catch (err) {
+      console.error('Error decoding QR:', err);
+      setError('Error al procesar el QR');
+    }
+  }, [onScan]);
 
   return (
     <div className="space-y-4">
-      {/* Contenedor del scanner */}
-      <div 
-        id="qr-reader" 
-        className={`w-full max-w-md mx-auto overflow-hidden rounded-xl border-2 ${
-          isScanning ? 'border-amber-400' : 'border-slate-200 dark:border-slate-600'
-        } bg-slate-100 dark:bg-slate-700`}
-        style={{ minHeight: isScanning ? '300px' : '100px' }}
-      >
+      {/* Video de la cámara */}
+      <div className="relative w-full max-w-md mx-auto overflow-hidden rounded-xl border-2 border-amber-400 bg-black">
+        <video 
+          ref={videoRef}
+          className="w-full"
+          style={{ maxHeight: '300px' }}
+          playsInline
+          muted
+        />
+        <canvas ref={canvasRef} className="hidden" />
+        
         {!isScanning && (
-          <div className="flex items-center justify-center h-24 text-slate-400">
-            <Camera className="w-8 h-8 mr-2" />
-            <span>Cámara desactivada</span>
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
+            <div className="text-center text-slate-400">
+              <Camera className="w-12 h-12 mx-auto mb-2" />
+              <p>Cámara desactivada</p>
+            </div>
+          </div>
+        )}
+        
+        {isScanning && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-48 h-48 border-2 border-white/50 rounded-lg" />
           </div>
         )}
       </div>
 
       {/* Error */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
-          <p className="text-sm text-red-700 dark:text-red-300">
-            <strong>Error:</strong> {error}
-          </p>
-          <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-            Asegúrate de permitir el acceso a la cámara en tu navegador y que estás usando HTTPS.
-          </p>
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
+          <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
         </div>
       )}
 
@@ -164,7 +237,7 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
         {!isScanning ? (
           <button
             onClick={startScanner}
-            disabled={isStarting || cameras.length === 0 || !Html5Qrcode}
+            disabled={isStarting}
             className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition disabled:opacity-50"
           >
             {isStarting ? (
@@ -182,11 +255,11 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
         ) : (
           <>
             <button
-              onClick={stopScanner}
-              className="flex items-center gap-2 px-6 py-3 bg-red-500 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition"
+              onClick={captureAndDecode}
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition"
             >
-              <CameraOff className="w-5 h-5" />
-              Detener
+              <Scan className="w-5 h-5" />
+              Escanear QR
             </button>
             
             {cameras.length > 1 && (
@@ -195,9 +268,15 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
                 className="flex items-center gap-2 px-4 py-3 bg-slate-500 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition"
               >
                 <SwitchCamera className="w-5 h-5" />
-                Cambiar
               </button>
             )}
+            
+            <button
+              onClick={stopScanner}
+              className="flex items-center gap-2 px-4 py-3 bg-red-500 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition"
+            >
+              <CameraOff className="w-5 h-5" />
+            </button>
           </>
         )}
       </div>
@@ -205,12 +284,10 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
       {/* Instrucciones */}
       {isScanning && (
         <div className="text-center text-sm text-slate-500 dark:text-slate-400">
-          <Scan className="w-5 h-5 inline-block mr-1 animate-pulse" />
-          Apunta la cámara al código QR del estudiante
+          Centra el QR en el cuadro y presiona <strong>"Escanear QR"</strong>
         </div>
       )}
 
-      {/* Lista de cámaras disponibles */}
       {cameras.length > 1 && !isScanning && (
         <div className="text-center text-xs text-slate-400">
           {cameras.length} cámara(s) detectada(s)
