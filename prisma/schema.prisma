@@ -281,3 +281,184 @@ model ConfigPOS {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
+
+// ─────────────────────────────────────────────────────────────
+// SISTEMA DE ASISTENCIA ESCOLAR CON QR
+// ─────────────────────────────────────────────────────────────
+
+model Estudiante {
+  id                String   @id @default(uuid())
+  matricula         String   @unique
+  nombre            String
+  apellido          String
+  email             String   @unique
+  telefono          String?
+  grupo             String?
+  fotoUrl           String?
+  
+  // Contactos de emergencia / padres
+  nombrePadre       String?
+  emailPadre        String?
+  telefonoPadre     String?
+  telegramPadre     String?  // Username de Telegram del padre
+  telegramChatIdPadre String? // Chat ID de Telegram del padre (para enviar mensajes directos)
+  padreVinculado    Boolean  @default(false) // Si el padre ya se vinculó con el bot
+  
+  nombreMadre       String?
+  emailMadre        String?
+  telefonoMadre     String?
+  telegramMadre     String?  // Username de Telegram de la madre
+  telegramChatIdMadre String? // Chat ID de Telegram de la madre
+  madreVinculada    Boolean  @default(false) // Si la madre ya se vinculó con el bot
+  
+  // QR único del estudiante
+  qrToken           String   @unique
+  qrUrl             String?
+  
+  activo            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relaciones
+  asistencias       AsistenciaEstudiante[]
+  notificaciones    NotificacionAsistencia[]
+}
+
+// Padre vinculado con Telegram
+model PadreTelegram {
+  id                String   @id @default(uuid())
+  chatId            String   @unique  // Chat ID de Telegram
+  telegramUsername  String?  // @username del padre
+  nombre            String?  // Nombre del padre
+  email             String?  // Email del padre
+  telefono          String?  // Teléfono del padre
+  
+  // Código de vinculación
+  codigoVinculacion String?  @unique // Código para vincular con estudiante
+  codigoUsado       Boolean  @default(false)
+  codigoExpira      DateTime?
+  
+  // Relación con estudiantes (puede tener varios hijos)
+  estudiantes       String?  // IDs de estudiantes separados por coma
+  
+  verificado        Boolean  @default(false)
+  activo            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([chatId])
+  @@index([email])
+}
+
+model Clase {
+  id                String   @id @default(uuid())
+  codigo            String   @unique
+  nombre            String
+  descripcion       String?
+  profesor          String?
+  salon             String?
+  
+  // Horario
+  diaSemana         Int      // 1=Lunes, 7=Domingo
+  horaInicio        String   // "09:00"
+  horaFin           String   // "11:00"
+  
+  // Configuración de asistencia
+  toleranciaMinutos Int      @default(5)
+  
+  activa            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relaciones
+  asistencias       AsistenciaEstudiante[]
+}
+
+model AsistenciaEstudiante {
+  id                String   @id @default(uuid())
+  estudianteId      String
+  estudiante        Estudiante @relation(fields: [estudianteId], references: [id])
+  
+  claseId           String
+  clase             Clase @relation(fields: [claseId], references: [id])
+  
+  fecha             String   // YYYY-MM-DD
+  horaRegistro      String   // HH:MM:SS
+  timestamp         DateTime @default(now())
+  
+  // Estado: PRESENTE, RETARDO, AUSENTE
+  estado            String   @default("PRESENTE")
+  minutosRetraso    Int      @default(0)
+  
+  // Información adicional
+  dispositivo       String?
+  ipRegistro        String?
+  notas             String?
+  
+  createdAt         DateTime @default(now())
+  
+  @@unique([estudianteId, claseId, fecha])
+  @@index([fecha])
+  @@index([claseId])
+}
+
+model ConfigAsistencia {
+  id                    String   @id @default("default")
+  nombreInstitucion     String   @default("Instituto Educativo")
+  logo                  String?
+  
+  // Configuración general
+  horaInicioGeneral     String   @default("08:00")
+  toleranciaMinutos     Int      @default(5)
+  diasClase             String   @default("1,2,3,4,5") // Lunes a Viernes
+  
+  // Notificaciones Email
+  enviarNotificaciones  Boolean  @default(true)
+  emailAdmin            String?
+  emailRemitente        String?  // Email desde donde se envían
+  nombreRemitente       String?  @default("Sistema de Asistencia")
+  
+  // Notificaciones Telegram - Bot para padres
+  telegramBotToken      String?  // Token del bot de Telegram
+  telegramBotUsername   String?  // @username del bot
+  telegramChatId        String?  // Chat ID del grupo/canal (opcional, para administradores)
+  enviarTelegram        Boolean  @default(false)
+  enviarTelegramPadres  Boolean  @default(true)  // Enviar a padres directamente
+  telegramWebhookUrl    String?  // URL del webhook (se configura automáticamente)
+  
+  // Configuración de qué notificar
+  notificarRetardo      Boolean  @default(true)
+  notificarAusencia     Boolean  @default(true)
+  notificarEntrada      Boolean  @default(false)
+  
+  // Personalización
+  colorPrimario         String   @default("#10b981")
+  mensajeBienvenida     String   @default("¡Bienvenido! Tu asistencia ha sido registrada.")
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model NotificacionAsistencia {
+  id                String   @id @default(uuid())
+  estudianteId      String
+  estudiante        Estudiante @relation(fields: [estudianteId], references: [id])
+  
+  asistenciaId      String?  // Referencia a la asistencia (si aplica)
+  
+  tipo              String   // RETARDO, AUSENCIA, ENTRADA, GENERAL
+  canal             String   // EMAIL_PADRE, EMAIL_MADRE, TELEGRAM_PADRE, TELEGRAM_MADRE, TELEGRAM_GRUPO
+  
+  destino           String   // Email o chat ID
+  asunto            String?
+  mensaje           String
+  
+  enviado           Boolean  @default(false)
+  error             String?
+  fechaEnvio        DateTime?
+  
+  createdAt         DateTime @default(now())
+  
+  @@index([estudianteId])
+  @@index([tipo])
+}
