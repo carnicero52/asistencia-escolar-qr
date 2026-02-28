@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Camera, CameraOff, SwitchCamera, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Camera, CameraOff, SwitchCamera, RefreshCw, CheckCircle } from 'lucide-react';
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -11,287 +11,298 @@ interface QRScannerProps {
 
 export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScannerProps) {
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [status, setStatus] = useState('Listo');
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
-  const [currentCamera, setCurrentCamera] = useState<string>('');
-  const [qrScanner, setQrScanner] = useState<any>(null);
-  const [hasFlash, setHasFlash] = useState(false);
-  const [flashOn, setFlashOn] = useState(false);
-
+  const [cameraIndex, setCameraIndex] = useState(0);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number | null>(null);
+  const qrScannerRef = useRef<any>(null);
 
-  // Cargar QRScanner dinámicamente
+  // Cargar qr-scanner dinámicamente
   useEffect(() => {
-    let mounted = true;
-    
     import('qr-scanner').then((module) => {
-      if (mounted) {
-        setQrScanner(() => module.default);
-      }
-    }).catch((err) => {
-      console.error('Error loading qr-scanner:', err);
-      setError('Error al cargar el escáner');
+      qrScannerRef.current = module.default;
+      console.log('✅ qr-scanner cargado');
+    }).catch(err => {
+      console.error('❌ Error cargando qr-scanner:', err);
     });
-
-    return () => { mounted = false; };
   }, []);
 
-  // Obtener cámaras disponibles
-  const getCameras = useCallback(async () => {
-    if (!qrScanner) return;
-    
-    try {
-      const devices = await qrScanner.listCameras(true);
-      setCameras(devices);
-      
-      // Buscar cámara trasera
-      const backCamera = devices.find((d: any) => 
-        d.label?.toLowerCase().includes('back') ||
-        d.label?.toLowerCase().includes('trasera') ||
-        d.label?.toLowerCase().includes('rear')
-      );
-      
-      setCurrentCamera(backCamera?.id || devices[0]?.id || '');
-    } catch (err) {
-      console.error('Error listing cameras:', err);
-    }
-  }, [qrScanner]);
-
-  // Crear escáner
-  const scannerRef = useRef<any>(null);
-
-  const startScanner = useCallback(async () => {
-    if (!qrScanner || !videoRef.current) {
-      setError('Escáner no disponible');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Obtener cámaras
-      await getCameras();
-
-      // Crear el escáner
-      scannerRef.current = new qrScanner(
-        videoRef.current,
-        (result: any) => {
-          console.log('QR detectado:', result.data);
-          onScan(result.data);
-          // Opcional: detener después de escanear
-          // stopScanner();
-        },
-        {
-          preferredCamera: currentCamera || 'environment',
-          highlightScanRegion: true,
-          highlightCodeOutline: true,
-          maxScansPerSecond: 5,
-          onDecodeError: (error: any) => {
-            // Ignorar errores de decodificación mientras busca
-          },
-        }
-      );
-
-      // Iniciar
-      await scannerRef.current.start();
-      
-      // Verificar si tiene flash
-      const hasFlashSupport = await scannerRef.current.hasFlash();
-      setHasFlash(hasFlashSupport);
-
-      setIsScanning(true);
-      
-    } catch (err: any) {
-      console.error('Error starting scanner:', err);
-      if (err.name === 'NotAllowedError') {
-        setError('❌ Permiso denegado. Por favor permite el acceso a la cámara.');
-      } else if (err.name === 'NotFoundError') {
-        setError('❌ No se encontró cámara en este dispositivo.');
-      } else {
-        setError('❌ ' + (err.message || 'Error al iniciar cámara'));
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [qrScanner, currentCamera, getCameras, onScan, setIsScanning]);
-
+  // Detener todo
   const stopScanner = useCallback(() => {
-    if (scannerRef.current) {
-      scannerRef.current.stop();
-      scannerRef.current.destroy();
-      scannerRef.current = null;
+    console.log('🛑 Deteniendo...');
+    
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
     }
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+      videoRef.current.load();
+    }
+    
     setIsScanning(false);
-    setFlashOn(false);
+    setStatus('Detenido');
+    setError(null);
   }, [setIsScanning]);
 
-  const switchCamera = useCallback(async () => {
-    if (!scannerRef.current || cameras.length <= 1) return;
-
-    const currentIndex = cameras.findIndex(c => c.id === currentCamera);
-    const nextIndex = (currentIndex + 1) % cameras.length;
-    const nextCamera = cameras[nextIndex].id;
-
-    try {
-      await scannerRef.current.setCamera(nextCamera);
-      setCurrentCamera(nextCamera);
-    } catch (err) {
-      console.error('Error switching camera:', err);
-    }
-  }, [cameras, currentCamera]);
-
-  const toggleFlash = useCallback(async () => {
-    if (!scannerRef.current || !hasFlash) return;
-    
-    try {
-      await scannerRef.current.toggleFlash();
-      setFlashOn(!flashOn);
-    } catch (err) {
-      console.error('Error toggling flash:', err);
-    }
-  }, [hasFlash, flashOn]);
-
-  // Cleanup
+  // Cleanup al desmontar
   useEffect(() => {
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop();
-        scannerRef.current.destroy();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
       }
     };
   }, []);
 
-  // Actualizar cámaras cuando cambie qrScanner
-  useEffect(() => {
-    if (qrScanner && !isScanning) {
-      getCameras();
-    }
-  }, [qrScanner, getCameras, isScanning]);
+  // Iniciar cámara
+  const startScanner = useCallback(async () => {
+    console.log('🎬 Iniciando cámara...');
+    setStatus('Iniciando...');
+    setError(null);
 
-  if (!qrScanner) {
-    return (
-      <div className="text-center py-8 text-slate-500">
-        <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
-        Cargando escáner...
-      </div>
-    );
-  }
+    try {
+      // Obtener lista de dispositivos primero
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      setCameras(videoDevices);
+      console.log('📷 Cámaras:', videoDevices.length);
+
+      // Seleccionar cámara
+      let targetDevice = videoDevices[cameraIndex]?.deviceId;
+      
+      // Si no hay índice, buscar trasera
+      if (!targetDevice && videoDevices.length > 0) {
+        const backCam = videoDevices.find(d => 
+          d.label.toLowerCase().includes('back') ||
+          d.label.toLowerCase().includes('trasera') ||
+          d.label.toLowerCase().includes('rear')
+        );
+        targetDevice = backCam?.deviceId || videoDevices[0].deviceId;
+      }
+
+      // Obtener stream
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: targetDevice ? { exact: targetDevice } : undefined,
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+
+      streamRef.current = stream;
+      console.log('✅ Stream obtenido:', stream.getTracks()[0].label);
+
+      const video = videoRef.current;
+      if (!video) throw new Error('No video element');
+
+      // Asignar stream
+      video.srcObject = stream;
+      
+      // IMPORTANTE: Esperar a que el video tenga datos
+      video.onloadeddata = () => {
+        console.log('📺 Video data loaded:', video.videoWidth, 'x', video.videoHeight);
+        setStatus(`${video.videoWidth}x${video.videoHeight}`);
+        
+        // Iniciar escaneo con qr-scanner
+        if (qrScannerRef.current) {
+          startQRScanning();
+        }
+      };
+
+      video.onerror = (e) => {
+        console.error('❌ Video error:', e);
+        setError('Error al cargar video');
+      };
+
+      // Play
+      await video.play();
+      console.log('▶️ Video playing');
+      setIsScanning(true);
+
+    } catch (err: any) {
+      console.error('❌ Error:', err);
+      if (err.name === 'NotAllowedError') {
+        setError('Permiso denegado. Haz clic en el icono de cámara en la barra de direcciones y permite el acceso.');
+      } else if (err.name === 'NotFoundError') {
+        setError('No se encontró cámara en este dispositivo.');
+      } else if (err.name === 'NotReadableError') {
+        setError('La cámara está siendo usada por otra aplicación. Cierra otras apps que usen cámara.');
+      } else {
+        setError(err.message || 'Error desconocido');
+      }
+      setStatus('Error');
+    }
+  }, [cameraIndex, setIsScanning]);
+
+  // Escaneo continuo con qr-scanner
+  const startQRScanning = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current || !qrScannerRef.current) return;
+
+    const QrScanner = qrScannerRef.current;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    const scanFrame = async () => {
+      if (!streamRef.current || !video.videoWidth) {
+        animationRef.current = requestAnimationFrame(scanFrame);
+        return;
+      }
+
+      try {
+        // Usar qr-scanner para decodificar
+        const result = await QrScanner.scanImage(video, { 
+          returnDetailedScanResult: true 
+        });
+        
+        if (result?.data) {
+          console.log('✅ QR detectado:', result.data);
+          setStatus('¡QR detectado!');
+          onScan(result.data);
+          return; // Detener escaneo después de detectar
+        }
+      } catch {
+        // No hay QR en este frame, continuar
+      }
+
+      // Continuar escaneando
+      animationRef.current = requestAnimationFrame(scanFrame);
+    };
+
+    scanFrame();
+  }, [onScan]);
+
+  // Cambiar cámara
+  const switchCamera = useCallback(async () => {
+    if (cameras.length <= 1) return;
+
+    stopScanner();
+    const nextIndex = (cameraIndex + 1) % cameras.length;
+    setCameraIndex(nextIndex);
+    
+    // Pequeña pausa
+    await new Promise(r => setTimeout(r, 200));
+    startScanner();
+  }, [cameras, cameraIndex, stopScanner, startScanner]);
 
   return (
-    <div className="space-y-4">
-      {/* Video */}
-      <div className="relative w-full max-w-sm mx-auto rounded-xl overflow-hidden bg-black shadow-xl">
+    <div className="space-y-3">
+      {/* CONTENEDOR VIDEO */}
+      <div 
+        className="relative w-full max-w-sm mx-auto rounded-xl overflow-hidden bg-black"
+        style={{ 
+          aspectRatio: '3/4',
+          maxHeight: '450px'
+        }}
+      >
+        {/* VIDEO - Estilos inline forzados */}
         <video
           ref={videoRef}
-          className="w-full block"
-          style={{ 
-            minHeight: '280px',
-            maxHeight: '400px',
-            objectFit: 'cover'
-          }}
+          id="qr-video-element"
+          autoPlay
           playsInline
           muted
+          controls={false}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            backgroundColor: '#000',
+            display: 'block',
+            transform: 'scaleX(1)'
+          }}
         />
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-        {/* Overlay cuando está apagado */}
-        {!isScanning && !isLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
+        {/* Overlay cuando apagado */}
+        {!isScanning && (
+          <div 
+            className="absolute inset-0 flex flex-col items-center justify-center"
+            style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}
+          >
             <Camera className="w-16 h-16 text-slate-500 mb-3" />
             <p className="text-slate-400 text-lg">Cámara apagada</p>
-            <p className="text-slate-500 text-sm mt-1">Presiona el botón para iniciar</p>
           </div>
         )}
 
-        {/* Cargando */}
-        {isLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
-            <RefreshCw className="w-12 h-12 text-amber-500 animate-spin mb-3" />
-            <p className="text-white">Iniciando cámara...</p>
-          </div>
-        )}
-
-        {/* Indicador de cámara activa */}
+        {/* Estado */}
         {isScanning && (
-          <div className="absolute top-3 left-3 flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-black/70 backdrop-blur rounded-full">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-white text-xs font-medium">Escaneando</span>
-            </div>
+          <div 
+            className="absolute top-3 left-3 px-3 py-1.5 rounded-full flex items-center gap-2"
+            style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+          >
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-white text-xs font-medium">Escaneando...</span>
           </div>
         )}
 
-        {/* Info de cámara */}
-        {isScanning && cameras.length > 1 && (
-          <div className="absolute top-3 right-3 px-2 py-1 bg-black/70 backdrop-blur rounded text-white text-xs">
-            {cameras.find(c => c.id === currentCamera)?.label?.substring(0, 12) || `Cam ${currentCameraIndex + 1}`}
+        {/* Info de resolución */}
+        {isScanning && status.includes('x') && (
+          <div 
+            className="absolute bottom-3 left-3 px-2 py-1 rounded text-white text-xs"
+            style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+          >
+            {status}
+          </div>
+        )}
+
+        {/* QR detectado */}
+        {status === '¡QR detectado!' && (
+          <div 
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+          >
+            <div className="text-center">
+              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-2" />
+              <p className="text-white text-lg font-bold">¡QR Detectado!</p>
+            </div>
           </div>
         )}
       </div>
 
       {/* Error */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-4">
-          <p className="text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
-            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-            {error}
-          </p>
+        <div className="bg-red-100 border border-red-300 rounded-xl p-3 text-center">
+          <p className="text-red-700 text-sm">{error}</p>
         </div>
       )}
 
-      {/* Controles */}
-      <div className="flex justify-center gap-3 flex-wrap">
+      {/* CONTROLES */}
+      <div className="flex justify-center gap-3">
         {!isScanning ? (
           <button
             onClick={startScanner}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl transition-all active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-2 px-8 py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-bold text-lg shadow-lg active:scale-95 transition"
           >
-            {isLoading ? (
-              <>
-                <RefreshCw className="w-6 h-6 animate-spin" />
-                Iniciando...
-              </>
-            ) : (
-              <>
-                <Camera className="w-6 h-6" />
-                Iniciar Cámara
-              </>
-            )}
+            <Camera className="w-6 h-6" />
+            Iniciar Cámara
           </button>
         ) : (
           <>
-            {/* Cambiar cámara */}
             {cameras.length > 1 && (
               <button
                 onClick={switchCamera}
-                className="flex items-center gap-2 px-4 py-3 bg-slate-600 hover:bg-slate-500 text-white rounded-xl font-medium transition active:scale-95"
-                title="Cambiar cámara"
+                className="flex items-center gap-2 px-4 py-3 bg-slate-600 hover:bg-slate-500 text-white rounded-xl font-medium active:scale-95 transition"
               >
                 <SwitchCamera className="w-5 h-5" />
                 Cambiar
               </button>
             )}
-
-            {/* Flash */}
-            {hasFlash && (
-              <button
-                onClick={toggleFlash}
-                className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium transition active:scale-95 ${
-                  flashOn 
-                    ? 'bg-yellow-500 hover:bg-yellow-400 text-white' 
-                    : 'bg-slate-600 hover:bg-slate-500 text-white'
-                }`}
-                title={flashOn ? 'Apagar flash' : 'Encender flash'}
-              >
-                💡 {flashOn ? 'Apagar' : 'Flash'}
-              </button>
-            )}
-
-            {/* Detener */}
+            
             <button
               onClick={stopScanner}
-              className="flex items-center gap-2 px-6 py-3 bg-red-500 hover:bg-red-400 text-white rounded-xl font-bold transition active:scale-95"
+              className="flex items-center gap-2 px-6 py-3 bg-red-500 hover:bg-red-400 text-white rounded-xl font-bold active:scale-95 transition"
             >
               <CameraOff className="w-5 h-5" />
               Detener
@@ -302,13 +313,8 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
 
       {/* Instrucciones */}
       {isScanning && (
-        <div className="text-center bg-amber-50 dark:bg-amber-900/20 rounded-xl p-4">
-          <p className="text-amber-700 dark:text-amber-300 font-medium">
-            📱 Apunta la cámara al código QR
-          </p>
-          <p className="text-amber-600 dark:text-amber-400 text-sm mt-1">
-            El escaneo es automático - no necesitas presionar nada más
-          </p>
+        <div className="text-center text-sm text-slate-500 px-4">
+          📱 Apunta la cámara al código QR - El escaneo es automático
         </div>
       )}
 
@@ -320,6 +326,3 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
     </div>
   );
 }
-
-// Helper para el index
-let currentCameraIndex = 0;
