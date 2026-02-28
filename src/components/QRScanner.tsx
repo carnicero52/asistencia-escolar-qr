@@ -21,125 +21,171 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Función para detener la cámara completamente
   const stopScanner = useCallback(() => {
-    console.log('Stopping scanner...');
+    console.log('🛑 Stopping scanner...');
     
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
         track.stop();
+        console.log('Track stopped:', track.label);
       });
       streamRef.current = null;
     }
 
     if (videoRef.current) {
+      videoRef.current.pause();
       videoRef.current.srcObject = null;
-      videoRef.current.load();
+      videoRef.current.src = '';
     }
 
     setIsScanning(false);
     setCameraReady(false);
+    setError(null);
   }, [setIsScanning]);
 
+  // Cleanup cuando el componente se desmonta
+  useEffect(() => {
+    return () => {
+      console.log('🔄 Component unmounting - cleaning up camera');
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  // Cleanup cuando se cambia de módulo (isScanning cambia a false externamente)
+  useEffect(() => {
+    if (!isScanning && streamRef.current) {
+      console.log('📱 External stop detected');
+      stopScanner();
+    }
+  }, [isScanning, stopScanner]);
+
   const startScanner = useCallback(async () => {
+    console.log('🎥 Starting scanner...');
     setIsStarting(true);
     setError(null);
     setCameraReady(false);
 
-    console.log('Starting scanner...');
+    // Limpiar cualquier stream anterior
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
 
     try {
-      // Verificar soporte de mediaDevices
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Tu navegador no soporta acceso a la cámara');
+        throw new Error('Tu navegador no soporta acceso a la cámara. Usa Chrome o Safari.');
       }
 
-      // Primero obtener permisos con una solicitud básica
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' },
-          audio: false 
-        });
-      } catch (permErr: any) {
-        console.error('Permission error:', permErr);
-        if (permErr.name === 'NotAllowedError') {
-          throw new Error('Permiso denegado. Por favor permite el acceso a la cámara en la configuración de tu navegador.');
-        }
-        throw permErr;
-      }
-
-      // Obtener lista de cámaras
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(d => d.kind === 'videoinput');
-      console.log('Found cameras:', videoDevices.length);
-      setCameras(videoDevices);
+      // Obtener dispositivos primero
+      let devices = await navigator.mediaDevices.enumerateDevices();
+      let videoDevices = devices.filter(d => d.kind === 'videoinput');
       
-      if (videoDevices.length === 0) {
-        stream.getTracks().forEach(t => t.stop());
-        throw new Error('No se encontraron cámaras');
-      }
+      console.log('📷 Found', videoDevices.length, 'cameras');
+      setCameras(videoDevices);
 
-      // Si hay múltiples cámaras, intentar usar la trasera
-      if (videoDevices.length > 1) {
-        // Detener stream inicial
-        stream.getTracks().forEach(t => t.stop());
-        
-        // Buscar cámara trasera
+      // Configuración de video
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
+        },
+        audio: false
+      };
+
+      // Si hay dispositivos, intentar usar el específico
+      if (videoDevices.length > 0) {
         const backCamera = videoDevices.find(d => 
           d.label.toLowerCase().includes('back') || 
           d.label.toLowerCase().includes('trasera') ||
           d.label.toLowerCase().includes('rear') ||
-          d.label.toLowerCase().includes('environment') ||
-          d.label.toLowerCase().includes('camera 2')
+          d.label.toLowerCase().includes('environment')
         );
         
-        const targetDeviceId = backCamera?.deviceId || videoDevices[0].deviceId;
-        const targetIndex = videoDevices.findIndex(d => d.deviceId === targetDeviceId);
-        setCurrentCameraIndex(targetIndex >= 0 ? targetIndex : 0);
-
-        // Crear nuevo stream con el dispositivo específico
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            deviceId: { exact: targetDeviceId },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: false
-        });
+        if (backCamera) {
+          constraints.video = {
+            deviceId: { ideal: backCamera.deviceId },
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 }
+          };
+          const idx = videoDevices.findIndex(d => d.deviceId === backCamera.deviceId);
+          if (idx >= 0) setCurrentCameraIndex(idx);
+        }
       }
 
+      console.log('📋 Requesting camera with constraints:', constraints);
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
+      
+      console.log('✅ Got stream:', stream.getTracks().map(t => t.label));
 
-      // Configurar video element
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        
-        // IMPORTANTE: Forzar reproducción
-        videoRef.current.onloadedmetadata = async () => {
-          console.log('Video metadata loaded');
-          if (videoRef.current) {
-            try {
-              await videoRef.current.play();
-              console.log('Video playing');
-              setCameraReady(true);
-              setIsScanning(true);
-            } catch (playErr) {
-              console.error('Play error:', playErr);
-              setError('Error al reproducir video');
-            }
-          }
-        };
+      if (!videoRef.current) {
+        throw new Error('Video element no disponible');
+      }
 
-        videoRef.current.onerror = (e) => {
-          console.error('Video error:', e);
-          setError('Error al cargar video');
-        };
+      const video = videoRef.current;
+      
+      // Configurar eventos ANTES de asignar src
+      video.onloadedmetadata = () => {
+        console.log('📐 Video metadata loaded:', video.videoWidth, 'x', video.videoHeight);
+      };
+
+      video.oncanplay = () => {
+        console.log('🎬 Video can play');
+      };
+
+      video.onplay = () => {
+        console.log('▶️ Video playing');
+        setCameraReady(true);
+        setIsScanning(true);
+      };
+
+      video.onerror = (e) => {
+        console.error('❌ Video error:', e);
+        setError('Error al mostrar video');
+      };
+
+      // Asignar stream al video
+      video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+      
+      // Forzar carga y reproducción
+      try {
+        await video.load();
+        console.log('📥 Video loaded');
+      } catch (e) {
+        console.log('Load warning:', e);
+      }
+
+      // Pequeña pausa antes de play
+      await new Promise(r => setTimeout(r, 100));
+
+      try {
+        await video.play();
+        console.log('🚀 Video play started');
+      } catch (playError: any) {
+        console.error('Play error:', playError);
+        // Intentar reproducir con interacción del usuario
+        setError('Toca la pantalla para activar la cámara');
       }
 
     } catch (err: any) {
-      console.error('Scanner error:', err);
-      setError(err.message || 'Error al iniciar la cámara');
-      setIsScanning(false);
+      console.error('❌ Scanner error:', err);
+      if (err.name === 'NotAllowedError') {
+        setError('❌ Permiso denegado. Ve a configuración del navegador y permite el acceso a la cámara.');
+      } else if (err.name === 'NotFoundError') {
+        setError('❌ No se encontró cámara en este dispositivo.');
+      } else if (err.name === 'NotReadableError') {
+        setError('❌ La cámara está siendo usada por otra aplicación.');
+      } else {
+        setError('❌ Error: ' + (err.message || 'Desconocido'));
+      }
     } finally {
       setIsStarting(false);
     }
@@ -151,10 +197,11 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
     const nextIndex = (currentCameraIndex + 1) % cameras.length;
     const nextDevice = cameras[nextIndex];
     
-    console.log('Switching to camera:', nextDevice.label);
+    console.log('🔄 Switching to camera:', nextDevice.label || nextDevice.deviceId);
     
     // Detener stream actual
     streamRef.current.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
     setCameraReady(false);
 
     try {
@@ -176,7 +223,7 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
         setCameraReady(true);
       }
     } catch (err: any) {
-      console.error('Switch camera error:', err);
+      console.error('Switch error:', err);
       setError('Error al cambiar cámara');
     }
   }, [cameras, currentCameraIndex]);
@@ -192,7 +239,7 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
     const ctx = canvas.getContext('2d');
     
     if (!ctx) {
-      setError('Error de canvas');
+      setError('Error interno de canvas');
       return;
     }
 
@@ -200,28 +247,25 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
     setError(null);
 
     try {
-      // Usar dimensiones reales del video
       const width = video.videoWidth || 640;
       const height = video.videoHeight || 480;
       
+      console.log('📸 Capturing frame:', width, 'x', height);
+      
       canvas.width = width;
       canvas.height = height;
-      
-      // Dibujar frame actual
       ctx.drawImage(video, 0, 0, width, height);
 
-      // Convertir a blob
       const blob = await new Promise<Blob | null>((resolve) => {
         canvas.toBlob(resolve, 'image/jpeg', 0.8);
       });
 
       if (!blob) {
-        throw new Error('Error al capturar');
+        throw new Error('Error al capturar imagen');
       }
 
-      console.log('Sending QR for decode, size:', blob.size);
+      console.log('📤 Sending QR for decode, size:', blob.size, 'bytes');
 
-      // Enviar a API de QR
       const formData = new FormData();
       formData.append('file', blob, 'capture.jpg');
 
@@ -231,109 +275,114 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
       });
 
       const data = await response.json();
-      console.log('QR response:', data);
+      console.log('📥 QR response:', data);
       
       if (data?.[0]?.symbol?.[0]?.data) {
         const qrData = data[0].symbol[0].data;
-        console.log('QR decoded:', qrData);
+        console.log('✅ QR decoded:', qrData);
         onScan(qrData);
+      } else if (data?.[0]?.error) {
+        setError('Error del servidor: ' + data[0].error);
       } else {
-        setError('No se detectó código QR. Asegúrate de que esté bien iluminado y centrado.');
+        setError('❌ No se detectó código QR. Asegúrate de que esté bien iluminado y centrado.');
       }
     } catch (err: any) {
-      console.error('Decode error:', err);
-      setError('Error al procesar QR: ' + err.message);
+      console.error('❌ Decode error:', err);
+      setError('Error al procesar: ' + err.message);
     } finally {
       setIsDecoding(false);
     }
   }, [cameraReady, isDecoding, onScan]);
 
-  // Cleanup al desmontar
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-      }
-    };
-  }, []);
-
   return (
     <div className="space-y-4">
       {/* Contenedor del video */}
-      <div className="relative w-full max-w-md mx-auto overflow-hidden rounded-xl bg-black shadow-xl">
+      <div className="relative w-full max-w-md mx-auto overflow-hidden rounded-xl bg-black shadow-2xl" style={{ minHeight: '320px' }}>
         <video 
           ref={videoRef}
-          className="w-full block"
+          id="qr-video"
+          className="w-full h-full block object-cover"
           style={{ 
-            minHeight: '300px',
+            minHeight: '320px',
             maxHeight: '400px',
-            objectFit: 'cover',
             backgroundColor: '#000'
           }}
           playsInline
           muted
           autoPlay
+          controls={false}
         />
         <canvas ref={canvasRef} className="hidden" />
         
-        {/* Overlay cuando no hay cámara */}
-        {!isScanning && !isStarting && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
-            <div className="text-center text-white p-6">
-              <Camera className="w-16 h-16 mx-auto mb-4 opacity-60" />
-              <p className="text-lg font-medium">Cámara desactivada</p>
-              <p className="text-sm text-slate-400 mt-2">Presiona "Iniciar Cámara"</p>
-            </div>
+        {/* Placeholder cuando no hay cámara */}
+        {!isStarting && !isScanning && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 p-6">
+            <Camera className="w-20 h-20 text-slate-500 mb-4" />
+            <p className="text-lg font-medium text-slate-300">Cámara desactivada</p>
+            <p className="text-sm text-slate-500 mt-2 text-center">
+              Presiona el botón abajo para iniciar
+            </p>
           </div>
         )}
 
         {/* Cargando */}
         {isStarting && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
-            <div className="text-center text-white p-6">
-              <RefreshCw className="w-12 h-12 mx-auto mb-4 animate-spin" />
-              <p>Iniciando cámara...</p>
-              <p className="text-sm text-slate-400 mt-2">Permite el acceso cuando el navegador lo solicite</p>
-            </div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 p-6">
+            <RefreshCw className="w-16 h-16 text-amber-500 animate-spin mb-4" />
+            <p className="text-lg font-medium text-white">Iniciando cámara...</p>
+            <p className="text-sm text-slate-400 mt-2 text-center">
+              Si no funciona, verifica los permisos del navegador
+            </p>
           </div>
         )}
 
-        {/* Marco de escaneo */}
+        {/* Marco de escaneo - SOLO cuando está lista */}
         {isScanning && cameraReady && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative w-56 h-56">
-              <div className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-amber-400 rounded-tl-xl" />
-              <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-amber-400 rounded-tr-xl" />
-              <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-amber-400 rounded-bl-xl" />
-              <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-amber-400 rounded-br-xl" />
-              <div className="absolute inset-4 border-2 border-white/30 rounded-lg" />
+            <div className="relative w-60 h-60">
+              {/* Esquinas */}
+              <div className="absolute top-0 left-0 w-12 h-12 border-t-4 border-l-4 border-amber-400 rounded-tl-2xl" />
+              <div className="absolute top-0 right-0 w-12 h-12 border-t-4 border-r-4 border-amber-400 rounded-tr-2xl" />
+              <div className="absolute bottom-0 left-0 w-12 h-12 border-b-4 border-l-4 border-amber-400 rounded-bl-2xl" />
+              <div className="absolute bottom-0 right-0 w-12 h-12 border-b-4 border-r-4 border-amber-400 rounded-br-2xl" />
+              {/* Centro */}
+              <div className="absolute inset-6 border-2 border-white/20 rounded-lg" />
             </div>
           </div>
         )}
 
-        {/* Indicador de cámara lista */}
+        {/* Indicador de estado */}
         {isScanning && (
-          <div className="absolute top-3 left-3 px-3 py-1 bg-black/60 rounded-full flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${cameraReady ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`} />
-            <span className="text-white text-xs">{cameraReady ? 'Cámara lista' : 'Cargando...'}</span>
+          <div className="absolute top-3 left-3 px-3 py-1.5 bg-black/70 backdrop-blur-sm rounded-full flex items-center gap-2">
+            <div className={`w-2.5 h-2.5 rounded-full ${cameraReady ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`} />
+            <span className="text-white text-xs font-medium">
+              {cameraReady ? 'Cámara lista' : 'Cargando...'}
+            </span>
+          </div>
+        )}
+
+        {/* Nombre de cámara */}
+        {isScanning && cameras.length > 1 && (
+          <div className="absolute top-3 right-3 px-3 py-1.5 bg-black/70 backdrop-blur-sm rounded-full">
+            <span className="text-white text-xs">
+              {cameras[currentCameraIndex]?.label?.substring(0, 15) || `Cámara ${currentCameraIndex + 1}`}
+            </span>
           </div>
         )}
 
         {/* Procesando */}
         {isDecoding && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-            <div className="text-center text-white p-6">
-              <RefreshCw className="w-12 h-12 mx-auto mb-3 animate-spin" />
-              <p className="font-medium">Leyendo código QR...</p>
-            </div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
+            <RefreshCw className="w-16 h-16 text-amber-500 animate-spin mb-3" />
+            <p className="text-lg font-medium text-white">Leyendo código QR...</p>
           </div>
         )}
       </div>
 
       {/* Error */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
-          <p className="text-sm text-red-700 dark:text-red-300">⚠️ {error}</p>
+        <div className="bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-xl p-4">
+          <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
         </div>
       )}
 
@@ -343,16 +392,16 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
           <button
             onClick={startScanner}
             disabled={isStarting}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl transition-all active:scale-95 disabled:opacity-50"
           >
             {isStarting ? (
               <>
-                <RefreshCw className="w-5 h-5 animate-spin" />
+                <RefreshCw className="w-6 h-6 animate-spin" />
                 Iniciando...
               </>
             ) : (
               <>
-                <Camera className="w-5 h-5" />
+                <Camera className="w-6 h-6" />
                 Iniciar Cámara
               </>
             )}
@@ -362,16 +411,16 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
             <button
               onClick={captureAndDecode}
               disabled={isDecoding || !cameraReady}
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl transition-all active:scale-95 disabled:opacity-50"
             >
               {isDecoding ? (
                 <>
-                  <RefreshCw className="w-5 h-5 animate-spin" />
-                  Procesando
+                  <RefreshCw className="w-6 h-6 animate-spin" />
+                  Leyendo...
                 </>
               ) : (
                 <>
-                  <Scan className="w-5 h-5" />
+                  <Scan className="w-6 h-6" />
                   Escanear QR
                 </>
               )}
@@ -381,19 +430,19 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
               <button
                 onClick={switchCamera}
                 disabled={isDecoding}
-                className="flex items-center gap-2 px-4 py-3 bg-slate-600 text-white rounded-xl font-medium shadow-lg hover:bg-slate-500 transition disabled:opacity-50"
+                className="flex items-center justify-center w-14 h-14 bg-slate-600 text-white rounded-2xl font-medium shadow-lg hover:bg-slate-500 transition active:scale-95 disabled:opacity-50"
                 title="Cambiar cámara"
               >
-                <SwitchCamera className="w-5 h-5" />
+                <SwitchCamera className="w-6 h-6" />
               </button>
             )}
             
             <button
               onClick={stopScanner}
-              className="flex items-center gap-2 px-4 py-3 bg-red-500 text-white rounded-xl font-medium shadow-lg hover:bg-red-400 transition"
-              title="Detener cámara"
+              className="flex items-center justify-center w-14 h-14 bg-red-500 text-white rounded-2xl font-medium shadow-lg hover:bg-red-400 transition active:scale-95"
+              title="Apagar cámara"
             >
-              <CameraOff className="w-5 h-5" />
+              <CameraOff className="w-6 h-6" />
             </button>
           </>
         )}
@@ -401,11 +450,11 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
 
       {/* Instrucciones */}
       {isScanning && cameraReady && (
-        <div className="text-center space-y-2">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            📱 Centra el código QR dentro del marco amarillo
+        <div className="text-center space-y-1 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-4">
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+            📱 Centra el código QR dentro del marco
           </p>
-          <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+          <p className="text-sm text-amber-600 dark:text-amber-400">
             👆 Presiona "Escanear QR" para capturar
           </p>
         </div>
