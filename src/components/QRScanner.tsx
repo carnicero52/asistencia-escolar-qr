@@ -12,13 +12,13 @@ interface QRScannerProps {
 export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScannerProps) {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
-  const [videoWidth, setVideoWidth] = useState(0);
-  const [videoHeight, setVideoHeight] = useState(0);
+  const [frameCount, setFrameCount] = useState(0);
   
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const qrScannerRef = useRef<any>(null);
-  const scanningRef = useRef<boolean>(false);
+  const animationRef = useRef<number | null>(null);
 
   // Cargar qr-scanner
   useEffect(() => {
@@ -29,7 +29,10 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
 
   // Detener cámara
   const stopScanner = useCallback(() => {
-    scanningRef.current = false;
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
     
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -41,8 +44,7 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
     }
     
     setIsScanning(false);
-    setVideoWidth(0);
-    setVideoHeight(0);
+    setFrameCount(0);
     setStatus('');
     setError(null);
   }, [setIsScanning]);
@@ -50,114 +52,159 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
   // Cleanup
   useEffect(() => {
     return () => {
-      scanningRef.current = false;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
+      }
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
       }
     };
   }, []);
 
-  // Función de escaneo continuo
-  const startScanning = useCallback(async () => {
-    if (!videoRef.current || !qrScannerRef.current || !scanningRef.current) return;
-
+  // Renderizar video en canvas y escanear
+  const renderAndScan = useCallback(() => {
     const video = videoRef.current;
-    const QrScanner = qrScannerRef.current;
-
-    try {
-      const result = await QrScanner.scanImage(video, { returnDetailedScanResult: true });
-      if (result?.data) {
-        console.log('✅ QR:', result.data);
-        setStatus('¡QR detectado!');
-        onScan(result.data);
-        return;
-      }
-    } catch {
-      // No QR en este frame
+    const canvas = canvasRef.current;
+    
+    if (!video || !canvas || video.readyState < 2) {
+      animationRef.current = requestAnimationFrame(renderAndScan);
+      return;
     }
 
-    // Continuar escaneando
-    if (scanningRef.current) {
-      requestAnimationFrame(startScanning);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Dibujar frame del video en canvas
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    
+    canvas.width = vw;
+    canvas.height = vh;
+    ctx.drawImage(video, 0, 0, vw, vh);
+    
+    // Contador de frames para verificar que está funcionando
+    setFrameCount(prev => prev + 1);
+
+    // Escanear QR cada 5 frames
+    if (frameCount % 5 === 0 && qrScannerRef.current) {
+      qrScannerRef.current.scanImage(canvas, { returnDetailedScanResult: true })
+        .then((result: any) => {
+          if (result?.data) {
+            console.log('✅ QR:', result.data);
+            setStatus('¡QR detectado!');
+            onScan(result.data);
+            return;
+          }
+        })
+        .catch(() => {});
     }
-  }, [onScan]);
+
+    // Continuar loop
+    animationRef.current = requestAnimationFrame(renderAndScan);
+  }, [frameCount, onScan]);
 
   // Iniciar cámara
   const startScanner = useCallback(async () => {
-    console.log('🎬 Iniciando...');
+    console.log('🎬 Iniciando cámara...');
     setError(null);
-    setStatus('Solicitando permisos...');
+    setStatus('Iniciando...');
 
     try {
       // Obtener stream
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: { ideal: 640 },
+          height: { ideal: 480 }
         },
         audio: false
       });
 
       streamRef.current = stream;
-      const track = stream.getVideoTracks()[0];
-      const settings = track.getSettings();
-      
-      console.log('📷 Track:', track.label);
-      console.log('📐 Settings:', settings);
-      
-      setStatus('Stream obtenido');
+      console.log('✅ Stream obtenido');
+      setStatus('Stream listo');
 
-      // Obtener elemento video
+      // Video oculto (solo para capturar datos)
       const video = videoRef.current;
-      if (!video) {
-        throw new Error('No video element');
+      if (video) {
+        video.srcObject = stream;
+        video.play();
       }
 
-      // ASIGNAR STREAM AL VIDEO
-      video.srcObject = stream;
-      
-      // IMPORTANTE: Esperar a que el video pueda reproducirse
-      const waitForVideo = () => {
-        return new Promise<void>((resolve) => {
-          const checkReady = () => {
-            if (video.readyState >= 2) {
-              console.log('✅ Video ready:', video.readyState);
-              resolve();
-            } else {
-              setTimeout(checkReady, 50);
-            }
-          };
-          checkReady();
-        });
-      };
+      // Esperar a que el video esté listo
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (video && video.readyState >= 2) {
+            console.log('📺 Video ready:', video.videoWidth, 'x', video.videoHeight);
+            resolve();
+          } else {
+            setTimeout(check, 100);
+          }
+        };
+        check();
+      });
 
-      // Reproducir
-      await video.play();
-      await waitForVideo();
-      
-      console.log('📺 Video dimensions:', video.videoWidth, 'x', video.videoHeight);
-      setVideoWidth(video.videoWidth);
-      setVideoHeight(video.videoHeight);
-      setStatus('Cámara activa');
       setIsScanning(true);
-      scanningRef.current = true;
+      setStatus('Escaneando...');
       
-      // Iniciar escaneo
-      startScanning();
+      // Iniciar renderizado en canvas
+      renderAndScan();
 
     } catch (err: any) {
       console.error('❌ Error:', err);
-      setError(err.message || 'Error');
+      setError(err.message);
       setStatus('Error');
     }
-  }, [setIsScanning, startScanning]);
+  }, [setIsScanning, renderAndScan]);
+
+  // Captura manual
+  const captureNow = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) {
+      setError('Video no listo');
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    try {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+
+      if (qrScannerRef.current) {
+        const result = await qrScannerRef.current.scanImage(canvas, { returnDetailedScanResult: true });
+        if (result?.data) {
+          setStatus('¡QR detectado!');
+          onScan(result.data);
+          return;
+        }
+      }
+      setStatus('No se detectó QR');
+      setTimeout(() => setStatus('Escaneando...'), 2000);
+    } catch (e) {
+      setStatus('Error al escanear');
+    }
+  }, [onScan]);
 
   return (
     <div className="space-y-3">
-      {/* ===== VIDEO CONTAINER - LO MÁS SIMPLE POSIBLE ===== */}
+      {/* VIDEO OCULTO */}
+      <video
+        ref={videoRef}
+        playsInline
+        muted
+        autoPlay
+        style={{ display: 'none' }}
+      />
+
+      {/* CANVAS VISIBLE - Aquí se muestra la imagen */}
       <div 
-        className="relative mx-auto rounded-xl overflow-hidden"
+        className="relative mx-auto rounded-xl overflow-hidden border-4 border-amber-400"
         style={{ 
           width: '100%',
           maxWidth: '320px',
@@ -165,126 +212,93 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
           backgroundColor: '#000'
         }}
       >
-        {/* VIDEO ELEMENT - Solo atributos esenciales */}
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
+        <canvas
+          ref={canvasRef}
+          className="w-full h-full"
           style={{
+            display: 'block',
             width: '100%',
             height: '100%',
-            objectFit: 'cover',
-            display: 'block',
-            backgroundColor: '#000'
+            objectFit: 'cover'
           }}
         />
 
-        {/* Overlay solo cuando está APAGADO */}
-        {!isScanning && videoWidth === 0 && (
-          <div 
-            className="absolute inset-0 flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}
-          >
+        {/* Overlay cuando apagado */}
+        {!isScanning && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
             <div className="text-center text-white">
               <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Presiona Iniciar</p>
+              <p>Cámara apagada</p>
             </div>
           </div>
         )}
 
-        {/* Estado de éxito */}
+        {/* Indicador de estado */}
+        {isScanning && (
+          <div className="absolute top-2 left-2 px-2 py-1 bg-black/70 rounded-full flex items-center gap-1">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-white text-xs">{status}</span>
+          </div>
+        )}
+
+        {/* Frame counter - para verificar que el video está funcionando */}
+        {isScanning && (
+          <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/70 rounded text-white text-xs">
+            Frame: {frameCount}
+          </div>
+        )}
+
+        {/* QR detectado */}
         {status === '¡QR detectado!' && (
-          <div 
-            className="absolute inset-0 flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}
-          >
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80">
             <div className="text-center">
               <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-2" />
-              <p className="text-white font-bold">¡QR Detectado!</p>
+              <p className="text-white font-bold text-lg">¡QR Detectado!</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* INFO DE DEBUG */}
-      {isScanning && videoWidth > 0 && (
-        <div className="text-center text-xs text-green-600 font-medium">
-          ✓ Cámara activa: {videoWidth}x{videoHeight}
-        </div>
-      )}
-
-      {/* BOTÓN DE ESCANEO MANUAL - SIEMPRE DISPONIBLE */}
-      {isScanning && videoWidth > 0 && (
-        <button
-          onClick={async () => {
-            if (!videoRef.current) return;
-            const video = videoRef.current;
-            
-            // Crear canvas para capturar frame
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
-            
-            ctx.drawImage(video, 0, 0);
-            
-            try {
-              const QrScanner = qrScannerRef.current;
-              if (!QrScanner) return;
-              
-              const result = await QrScanner.scanImage(video, { returnDetailedScanResult: true });
-              if (result?.data) {
-                setStatus('¡QR detectado!');
-                onScan(result.data);
-              } else {
-                setStatus('No se detectó QR');
-                setTimeout(() => setStatus('Cámara activa'), 2000);
-              }
-            } catch {
-              setStatus('No se detectó QR');
-              setTimeout(() => setStatus('Cámara activa'), 2000);
-            }
-          }}
-          className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-bold text-lg shadow-lg active:scale-98 transition"
-        >
-          📷 Capturar y Leer QR
-        </button>
-      )}
-
-      {/* ERROR */}
+      {/* Error */}
       {error && (
         <div className="bg-red-100 text-red-700 p-3 rounded-xl text-sm text-center">
           {error}
         </div>
       )}
 
-      {/* CONTROLES */}
+      {/* Controles */}
       <div className="flex justify-center gap-3">
         {!isScanning ? (
           <button
             onClick={startScanner}
-            className="flex items-center gap-2 px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-lg transition active:scale-95"
+            className="flex items-center gap-2 px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold transition active:scale-95"
           >
             <Camera className="w-5 h-5" />
             Iniciar Cámara
           </button>
         ) : (
-          <button
-            onClick={stopScanner}
-            className="flex items-center gap-2 px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition active:scale-95"
-          >
-            <CameraOff className="w-5 h-5" />
-            Detener
-          </button>
+          <>
+            <button
+              onClick={captureNow}
+              className="flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition active:scale-95"
+            >
+              📷 Capturar QR
+            </button>
+            
+            <button
+              onClick={stopScanner}
+              className="flex items-center gap-2 px-4 py-3 bg-red-500 hover:bg-red-400 text-white rounded-xl font-bold transition active:scale-95"
+            >
+              <CameraOff className="w-5 h-5" />
+            </button>
+          </>
         )}
       </div>
 
-      {/* INSTRUCCIONES */}
+      {/* Instrucciones */}
       {isScanning && (
         <p className="text-center text-sm text-slate-500">
-          📱 Apunta al código QR - Escaneo automático
+          El contador "Frame" debe incrementar → La cámara funciona
         </p>
       )}
     </div>
