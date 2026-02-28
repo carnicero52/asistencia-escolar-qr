@@ -1075,23 +1075,63 @@ export default function SistemaAsistenciaQR() {
                     isScanning={isScanning}
                     setIsScanning={setIsScanning}
                   />
-
-                  <div className="mt-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
-                    <p className="text-sm text-amber-800 dark:text-amber-200">
-                      <strong>Tip:</strong> Apunta la cámara directamente al código QR. El escaneo es automático.
-                    </p>
-                  </div>
                 </Card>
 
                 <Card className="p-6">
-                  <h3 className="font-bold text-slate-800 dark:text-white mb-4">O Ingresar Manualmente</h3>
+                  <h3 className="font-bold text-slate-800 dark:text-white mb-4">Otras Opciones</h3>
                   
                   <div className="space-y-4">
+                    {/* Opción 1: Subir imagen */}
                     <div>
-                      <label className="block text-sm text-slate-600 dark:text-slate-400 mb-2">Código QR del Estudiante</label>
+                      <label className="block text-sm text-slate-600 dark:text-slate-400 mb-2">
+                        📷 Subir imagen del QR
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          
+                          try {
+                            const res = await fetch('https://api.qrserver.com/v1/read-qr-code/', {
+                              method: 'POST',
+                              body: formData
+                            });
+                            const data = await res.json();
+                            if (data?.[0]?.symbol?.[0]?.data) {
+                              setQrInput(data[0].symbol[0].data);
+                              handleRegistrarAsistencia(data[0].symbol[0].data);
+                            } else {
+                              showToast('No se detectó QR en la imagen', 'error');
+                            }
+                          } catch {
+                            showToast('Error al leer QR', 'error');
+                          }
+                        }}
+                        className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-medium file:bg-amber-100 file:text-amber-700 hover:file:bg-amber-200 cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-slate-200 dark:border-slate-600"></div>
+                      </div>
+                      <div className="relative flex justify-center text-sm">
+                        <span className="px-2 bg-white dark:bg-slate-800 text-slate-500">O pegar código</span>
+                      </div>
+                    </div>
+
+                    {/* Opción 2: Pegar código */}
+                    <div>
+                      <label className="block text-sm text-slate-600 dark:text-slate-400 mb-2">Código QR</label>
                       <div className="flex gap-2">
                         <Input
-                          placeholder="Pega el código QR aquí..."
+                          placeholder="Pega el código aquí..."
                           value={qrInput}
                           onChange={(e) => setQrInput(e.target.value)}
                           className="font-mono text-sm"
@@ -1104,10 +1144,6 @@ export default function SistemaAsistenciaQR() {
                           {loading ? '...' : 'Registrar'}
                         </button>
                       </div>
-                    </div>
-
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      Si no tienes cámara, puedes copiar y pegar el código QR manualmente.
                     </div>
                   </div>
 
