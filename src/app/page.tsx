@@ -8,6 +8,10 @@ import {
   BarChart3, TrendingUp, UserCheck, UserX, Camera, Scan, Upload, FileText,
   Link, Send, Bot, Check, ExternalLink
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+// Importar QRScanner dinámicamente (sin SSR)
+const QRScanner = dynamic(() => import('@/components/QRScanner'), { ssr: false });
 
 // ─────────────────────────────────────────────────────────────
 // TIPOS
@@ -192,6 +196,7 @@ export default function SistemaAsistenciaQR() {
   // QR Scanner state
   const [qrInput, setQrInput] = useState('');
   const [scanResult, setScanResult] = useState<any>(null);
+  const [isScanning, setIsScanning] = useState(false);
   
   // Manual registration state
   const [manualBusqueda, setManualBusqueda] = useState('');
@@ -480,8 +485,9 @@ export default function SistemaAsistenciaQR() {
   // REGISTRO DE ASISTENCIA POR QR
   // ─────────────────────────────────────────────────────────────
 
-  const handleRegistrarAsistencia = async () => {
-    if (!qrInput.trim()) {
+  const handleRegistrarAsistencia = async (scannedQr?: string) => {
+    const token = scannedQr || qrInput;
+    if (!token?.trim()) {
       showToast('Ingresa el código QR', 'error');
       return;
     }
@@ -490,7 +496,7 @@ export default function SistemaAsistenciaQR() {
       const res = await fetch('/api/asistencia/registrar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qrToken: qrInput.trim() }),
+        body: JSON.stringify({ qrToken: token.trim() }),
       });
       const data = await res.json();
       
@@ -1055,7 +1061,30 @@ export default function SistemaAsistenciaQR() {
 
               <div className="grid md:grid-cols-2 gap-6">
                 <Card className="p-6">
-                  <h3 className="font-bold text-slate-800 dark:text-white mb-4">Escanear o Ingresar QR</h3>
+                  <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                    <Camera className="w-5 h-5" />
+                    Escáner de Cámara
+                  </h3>
+                  
+                  <QRScanner 
+                    onScan={(data) => {
+                      setQrInput(data);
+                      // Auto-registrar al escanear
+                      handleRegistrarAsistencia(data);
+                    }}
+                    isScanning={isScanning}
+                    setIsScanning={setIsScanning}
+                  />
+
+                  <div className="mt-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
+                    <p className="text-sm text-amber-800 dark:text-amber-200">
+                      <strong>Tip:</strong> Apunta la cámara directamente al código QR. El escaneo es automático.
+                    </p>
+                  </div>
+                </Card>
+
+                <Card className="p-6">
+                  <h3 className="font-bold text-slate-800 dark:text-white mb-4">O Ingresar Manualmente</h3>
                   
                   <div className="space-y-4">
                     <div>
@@ -1065,60 +1094,58 @@ export default function SistemaAsistenciaQR() {
                           placeholder="Pega el código QR aquí..."
                           value={qrInput}
                           onChange={(e) => setQrInput(e.target.value)}
-                          className="font-mono"
+                          className="font-mono text-sm"
                         />
                         <button
-                          onClick={handleRegistrarAsistencia}
+                          onClick={() => handleRegistrarAsistencia()}
                           disabled={loading}
-                          className={`px-6 py-3 bg-gradient-to-r ${moduleColors.scanner.bg} text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition disabled:opacity-50`}
+                          className={`px-4 py-3 bg-gradient-to-r ${moduleColors.scanner.bg} text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition disabled:opacity-50 whitespace-nowrap`}
                         >
                           {loading ? '...' : 'Registrar'}
                         </button>
                       </div>
                     </div>
 
-                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
-                      <p className="text-sm text-amber-800 dark:text-amber-200">
-                        <strong>Instrucciones:</strong> El estudiante debe mostrar su código QR. Puedes escanearlo con una app de QR o copiar el código manualmente.
-                      </p>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      Si no tienes cámara, puedes copiar y pegar el código QR manualmente.
                     </div>
                   </div>
-                </Card>
 
-                <Card className="p-6">
-                  <h3 className="font-bold text-slate-800 dark:text-white mb-4">Resultado</h3>
-                  
-                  {scanResult ? (
-                    <div className={`p-4 rounded-xl ${scanResult.success ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
-                      {scanResult.success ? (
-                        <div className="text-center">
-                          <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-3" />
-                          <p className="font-bold text-emerald-700 dark:text-emerald-300 text-lg">{scanResult.message}</p>
-                          {scanResult.asistencia && (
-                            <div className="mt-4 text-left bg-white dark:bg-slate-800 rounded-xl p-4">
-                              <p><strong>Estudiante:</strong> {scanResult.asistencia.estudiante.nombre} {scanResult.asistencia.estudiante.apellido}</p>
-                              <p><strong>Clase:</strong> {scanResult.asistencia.clase.nombre}</p>
-                              <p><strong>Hora:</strong> {formatTime(scanResult.asistencia.horaRegistro)}</p>
-                              <p><strong>Estado:</strong> <Badge estado={scanResult.asistencia.estado} /></p>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="text-center">
-                          <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-3" />
-                          <p className="font-bold text-red-700 dark:text-red-300">{scanResult.error}</p>
-                          {scanResult.estudiante && (
-                            <p className="text-sm text-red-600 mt-2">Estudiante: {scanResult.estudiante.nombre} {scanResult.estudiante.apellido}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-                      <Scan className="w-16 h-16 mx-auto mb-3 text-slate-300" />
-                      <p>Escanea un código QR para ver el resultado</p>
-                    </div>
-                  )}
+                  <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+                    <h4 className="font-semibold text-slate-700 dark:text-slate-300 mb-3">Resultado</h4>
+                    
+                    {scanResult ? (
+                      <div className={`p-4 rounded-xl ${scanResult.success ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
+                        {scanResult.success ? (
+                          <div className="text-center">
+                            <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-2" />
+                            <p className="font-bold text-emerald-700 dark:text-emerald-300">{scanResult.message}</p>
+                            {scanResult.asistencia && (
+                              <div className="mt-3 text-left bg-white dark:bg-slate-800 rounded-xl p-3 text-sm">
+                                <p><strong>Estudiante:</strong> {scanResult.asistencia.estudiante.nombre} {scanResult.asistencia.estudiante.apellido}</p>
+                                <p><strong>Clase:</strong> {scanResult.asistencia.clase.nombre}</p>
+                                <p><strong>Hora:</strong> {formatTime(scanResult.asistencia.horaRegistro)}</p>
+                                <p><strong>Estado:</strong> <Badge estado={scanResult.asistencia.estado} /></p>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-center">
+                            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-2" />
+                            <p className="font-bold text-red-700 dark:text-red-300">{scanResult.error}</p>
+                            {scanResult.estudiante && (
+                              <p className="text-sm text-red-600 mt-2">Estudiante: {scanResult.estudiante.nombre} {scanResult.estudiante.apellido}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                        <Scan className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                        <p className="text-sm">Escanea o ingresa un código QR</p>
+                      </div>
+                    )}
+                  </div>
                 </Card>
               </div>
             </div>
