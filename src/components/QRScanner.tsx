@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Camera, CameraOff, SwitchCamera, Scan } from 'lucide-react';
 
 interface QRScannerProps {
@@ -11,36 +10,56 @@ interface QRScannerProps {
 }
 
 export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScannerProps) {
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const scannerRef = useRef<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [currentCamera, setCurrentCamera] = useState<string>('');
   const [isStarting, setIsStarting] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+  const [Html5Qrcode, setHtml5Qrcode] = useState<any>(null);
 
-  // Obtener lista de cámaras
+  // Solo ejecutar en cliente
   useEffect(() => {
-    Html5Qrcode.getCameras()
-      .then((devices) => {
-        if (devices && devices.length > 0) {
-          setCameras(devices);
-          // Preferir cámara trasera
-          const backCamera = devices.find(d => 
-            d.label.toLowerCase().includes('back') || 
-            d.label.toLowerCase().includes('trasera') ||
-            d.label.toLowerCase().includes('rear')
-          );
-          setCurrentCamera(backCamera?.id || devices[0].id);
-        }
-      })
-      .catch((err) => {
-        console.error('Error getting cameras:', err);
-        setError('No se pudo acceder a la cámara. Verifica los permisos.');
-      });
+    setIsClient(true);
+    
+    // Importar dinámicamente html5-qrcode solo en cliente
+    import('html5-qrcode').then((module) => {
+      setHtml5Qrcode(() => module.Html5Qrcode);
+      
+      // Obtener lista de cámaras
+      module.Html5Qrcode.getCameras()
+        .then((devices: any[]) => {
+          if (devices && devices.length > 0) {
+            setCameras(devices);
+            // Preferir cámara trasera
+            const backCamera = devices.find(d => 
+              d.label.toLowerCase().includes('back') || 
+              d.label.toLowerCase().includes('trasera') ||
+              d.label.toLowerCase().includes('rear')
+            );
+            setCurrentCamera(backCamera?.id || devices[0].id);
+          }
+        })
+        .catch((err: Error) => {
+          console.error('Error getting cameras:', err);
+          setError('No se pudo acceder a la cámara. Verifica los permisos del navegador.');
+        });
+    }).catch((err) => {
+      console.error('Error loading html5-qrcode:', err);
+      setError('Error al cargar el escáner de QR');
+    });
+
+    // Cleanup
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {});
+        scannerRef.current.clear().catch(() => {});
+      }
+    };
   }, []);
 
-  const startScanner = async () => {
-    if (!containerRef.current || !currentCamera) return;
+  const startScanner = useCallback(async () => {
+    if (!Html5Qrcode || !currentCamera) return;
     
     setIsStarting(true);
     setError(null);
@@ -57,13 +76,11 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
           qrbox: { width: 250, height: 250 },
           aspectRatio: 1.0,
         },
-        (decodedText) => {
+        (decodedText: string) => {
           // QR escaneado exitosamente
           onScan(decodedText);
-          // Opcional: detener después de escanear
-          // stopScanner();
         },
-        (errorMessage) => {
+        (errorMessage: string) => {
           // Ignorar errores de escaneo continuo
           console.debug('Scan error:', errorMessage);
         }
@@ -76,9 +93,9 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
     } finally {
       setIsStarting(false);
     }
-  };
+  }, [Html5Qrcode, currentCamera, onScan, setIsScanning]);
 
-  const stopScanner = async () => {
+  const stopScanner = useCallback(async () => {
     if (scannerRef.current && isScanning) {
       try {
         await scannerRef.current.stop();
@@ -87,9 +104,9 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
         console.error('Error stopping scanner:', err);
       }
     }
-  };
+  }, [isScanning, setIsScanning]);
 
-  const switchCamera = async () => {
+  const switchCamera = useCallback(async () => {
     if (cameras.length <= 1) return;
     
     await stopScanner();
@@ -100,29 +117,35 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
     
     // Reiniciar con la nueva cámara
     setTimeout(() => startScanner(), 300);
-  };
+  }, [cameras, currentCamera, stopScanner, startScanner]);
 
-  // Limpiar al desmontar
-  useEffect(() => {
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current.clear().catch(() => {});
-      }
-    };
-  }, []);
+  // No renderizar nada en SSR
+  if (!isClient) {
+    return (
+      <div className="text-center py-8 text-slate-500">
+        <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-2" />
+        Cargando escáner...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       {/* Contenedor del scanner */}
       <div 
-        ref={containerRef}
         id="qr-reader" 
         className={`w-full max-w-md mx-auto overflow-hidden rounded-xl border-2 ${
           isScanning ? 'border-amber-400' : 'border-slate-200 dark:border-slate-600'
-        }`}
-        style={{ minHeight: isScanning ? '300px' : 'auto' }}
-      />
+        } bg-slate-100 dark:bg-slate-700`}
+        style={{ minHeight: isScanning ? '300px' : '100px' }}
+      >
+        {!isScanning && (
+          <div className="flex items-center justify-center h-24 text-slate-400">
+            <Camera className="w-8 h-8 mr-2" />
+            <span>Cámara desactivada</span>
+          </div>
+        )}
+      </div>
 
       {/* Error */}
       {error && (
@@ -131,7 +154,7 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
             <strong>Error:</strong> {error}
           </p>
           <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-            Asegúrate de permitir el acceso a la cámara en tu navegador.
+            Asegúrate de permitir el acceso a la cámara en tu navegador y que estás usando HTTPS.
           </p>
         </div>
       )}
@@ -141,7 +164,7 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
         {!isScanning ? (
           <button
             onClick={startScanner}
-            disabled={isStarting || cameras.length === 0}
+            disabled={isStarting || cameras.length === 0 || !Html5Qrcode}
             className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition disabled:opacity-50"
           >
             {isStarting ? (
