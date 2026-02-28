@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Camera, CameraOff, SwitchCamera, RefreshCw, CheckCircle } from 'lucide-react';
+import { Camera, CameraOff, CheckCircle, RefreshCw } from 'lucide-react';
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -11,34 +11,25 @@ interface QRScannerProps {
 
 export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScannerProps) {
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState('Listo');
-  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
-  const [cameraIndex, setCameraIndex] = useState(0);
+  const [status, setStatus] = useState('');
+  const [videoWidth, setVideoWidth] = useState(0);
+  const [videoHeight, setVideoHeight] = useState(0);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number | null>(null);
   const qrScannerRef = useRef<any>(null);
+  const scanningRef = useRef<boolean>(false);
 
-  // Cargar qr-scanner dinámicamente
+  // Cargar qr-scanner
   useEffect(() => {
     import('qr-scanner').then((module) => {
       qrScannerRef.current = module.default;
-      console.log('✅ qr-scanner cargado');
-    }).catch(err => {
-      console.error('❌ Error cargando qr-scanner:', err);
     });
   }, []);
 
-  // Detener todo
+  // Detener cámara
   const stopScanner = useCallback(() => {
-    console.log('🛑 Deteniendo...');
-    
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
-    }
+    scanningRef.current = false;
     
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -47,53 +38,60 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
     
     if (videoRef.current) {
       videoRef.current.srcObject = null;
-      videoRef.current.load();
     }
     
     setIsScanning(false);
-    setStatus('Detenido');
+    setVideoWidth(0);
+    setVideoHeight(0);
+    setStatus('');
     setError(null);
   }, [setIsScanning]);
 
-  // Cleanup al desmontar
+  // Cleanup
   useEffect(() => {
     return () => {
+      scanningRef.current = false;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
       }
     };
   }, []);
 
-  // Iniciar cámara
-  const startScanner = useCallback(async () => {
-    console.log('🎬 Iniciando cámara...');
-    setStatus('Iniciando...');
-    setError(null);
+  // Función de escaneo continuo
+  const startScanning = useCallback(async () => {
+    if (!videoRef.current || !qrScannerRef.current || !scanningRef.current) return;
+
+    const video = videoRef.current;
+    const QrScanner = qrScannerRef.current;
 
     try {
-      // Obtener lista de dispositivos primero
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(d => d.kind === 'videoinput');
-      setCameras(videoDevices);
-      console.log('📷 Cámaras:', videoDevices.length);
-
-      // Seleccionar cámara
-      let targetDevice = videoDevices[cameraIndex]?.deviceId;
-      
-      // Si no hay índice, buscar trasera
-      if (!targetDevice && videoDevices.length > 0) {
-        const backCam = videoDevices.find(d => 
-          d.label.toLowerCase().includes('back') ||
-          d.label.toLowerCase().includes('trasera') ||
-          d.label.toLowerCase().includes('rear')
-        );
-        targetDevice = backCam?.deviceId || videoDevices[0].deviceId;
+      const result = await QrScanner.scanImage(video, { returnDetailedScanResult: true });
+      if (result?.data) {
+        console.log('✅ QR:', result.data);
+        setStatus('¡QR detectado!');
+        onScan(result.data);
+        return;
       }
+    } catch {
+      // No QR en este frame
+    }
 
+    // Continuar escaneando
+    if (scanningRef.current) {
+      requestAnimationFrame(startScanning);
+    }
+  }, [onScan]);
+
+  // Iniciar cámara
+  const startScanner = useCallback(async () => {
+    console.log('🎬 Iniciando...');
+    setError(null);
+    setStatus('Solicitando permisos...');
+
+    try {
       // Obtener stream
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          deviceId: targetDevice ? { exact: targetDevice } : undefined,
           facingMode: 'environment',
           width: { ideal: 1280 },
           height: { ideal: 720 }
@@ -102,179 +100,124 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
       });
 
       streamRef.current = stream;
-      console.log('✅ Stream obtenido:', stream.getTracks()[0].label);
+      const track = stream.getVideoTracks()[0];
+      const settings = track.getSettings();
+      
+      console.log('📷 Track:', track.label);
+      console.log('📐 Settings:', settings);
+      
+      setStatus('Stream obtenido');
 
+      // Obtener elemento video
       const video = videoRef.current;
-      if (!video) throw new Error('No video element');
+      if (!video) {
+        throw new Error('No video element');
+      }
 
-      // Asignar stream
+      // ASIGNAR STREAM AL VIDEO
       video.srcObject = stream;
       
-      // IMPORTANTE: Esperar a que el video tenga datos
-      video.onloadeddata = () => {
-        console.log('📺 Video data loaded:', video.videoWidth, 'x', video.videoHeight);
-        setStatus(`${video.videoWidth}x${video.videoHeight}`);
-        
-        // Iniciar escaneo con qr-scanner
-        if (qrScannerRef.current) {
-          startQRScanning();
-        }
+      // IMPORTANTE: Esperar a que el video pueda reproducirse
+      const waitForVideo = () => {
+        return new Promise<void>((resolve) => {
+          const checkReady = () => {
+            if (video.readyState >= 2) {
+              console.log('✅ Video ready:', video.readyState);
+              resolve();
+            } else {
+              setTimeout(checkReady, 50);
+            }
+          };
+          checkReady();
+        });
       };
 
-      video.onerror = (e) => {
-        console.error('❌ Video error:', e);
-        setError('Error al cargar video');
-      };
-
-      // Play
+      // Reproducir
       await video.play();
-      console.log('▶️ Video playing');
+      await waitForVideo();
+      
+      console.log('📺 Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+      setVideoWidth(video.videoWidth);
+      setVideoHeight(video.videoHeight);
+      setStatus('Cámara activa');
       setIsScanning(true);
+      scanningRef.current = true;
+      
+      // Iniciar escaneo
+      startScanning();
 
     } catch (err: any) {
       console.error('❌ Error:', err);
-      if (err.name === 'NotAllowedError') {
-        setError('Permiso denegado. Haz clic en el icono de cámara en la barra de direcciones y permite el acceso.');
-      } else if (err.name === 'NotFoundError') {
-        setError('No se encontró cámara en este dispositivo.');
-      } else if (err.name === 'NotReadableError') {
-        setError('La cámara está siendo usada por otra aplicación. Cierra otras apps que usen cámara.');
-      } else {
-        setError(err.message || 'Error desconocido');
-      }
+      setError(err.message || 'Error');
       setStatus('Error');
     }
-  }, [cameraIndex, setIsScanning]);
-
-  // Escaneo continuo con qr-scanner
-  const startQRScanning = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current || !qrScannerRef.current) return;
-
-    const QrScanner = qrScannerRef.current;
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    const scanFrame = async () => {
-      if (!streamRef.current || !video.videoWidth) {
-        animationRef.current = requestAnimationFrame(scanFrame);
-        return;
-      }
-
-      try {
-        // Usar qr-scanner para decodificar
-        const result = await QrScanner.scanImage(video, { 
-          returnDetailedScanResult: true 
-        });
-        
-        if (result?.data) {
-          console.log('✅ QR detectado:', result.data);
-          setStatus('¡QR detectado!');
-          onScan(result.data);
-          return; // Detener escaneo después de detectar
-        }
-      } catch {
-        // No hay QR en este frame, continuar
-      }
-
-      // Continuar escaneando
-      animationRef.current = requestAnimationFrame(scanFrame);
-    };
-
-    scanFrame();
-  }, [onScan]);
-
-  // Cambiar cámara
-  const switchCamera = useCallback(async () => {
-    if (cameras.length <= 1) return;
-
-    stopScanner();
-    const nextIndex = (cameraIndex + 1) % cameras.length;
-    setCameraIndex(nextIndex);
-    
-    // Pequeña pausa
-    await new Promise(r => setTimeout(r, 200));
-    startScanner();
-  }, [cameras, cameraIndex, stopScanner, startScanner]);
+  }, [setIsScanning, startScanning]);
 
   return (
     <div className="space-y-3">
-      {/* CONTENEDOR VIDEO */}
+      {/* ===== VIDEO CONTAINER - LO MÁS SIMPLE POSIBLE ===== */}
       <div 
-        className="relative w-full max-w-sm mx-auto rounded-xl overflow-hidden bg-black"
+        className="relative mx-auto rounded-xl overflow-hidden"
         style={{ 
-          aspectRatio: '3/4',
-          maxHeight: '450px'
+          width: '100%',
+          maxWidth: '320px',
+          aspectRatio: '4/3',
+          backgroundColor: '#000'
         }}
       >
-        {/* VIDEO - Estilos inline forzados */}
+        {/* VIDEO ELEMENT - Solo atributos esenciales */}
         <video
           ref={videoRef}
-          id="qr-video-element"
           autoPlay
           playsInline
           muted
-          controls={false}
           style={{
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            backgroundColor: '#000',
             display: 'block',
-            transform: 'scaleX(1)'
+            backgroundColor: '#000'
           }}
         />
-        <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-        {/* Overlay cuando apagado */}
-        {!isScanning && (
+        {/* Overlay solo cuando está APAGADO */}
+        {!isScanning && videoWidth === 0 && (
           <div 
-            className="absolute inset-0 flex flex-col items-center justify-center"
+            className="absolute inset-0 flex items-center justify-center"
             style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}
           >
-            <Camera className="w-16 h-16 text-slate-500 mb-3" />
-            <p className="text-slate-400 text-lg">Cámara apagada</p>
+            <div className="text-center text-white">
+              <Camera className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Presiona Iniciar</p>
+            </div>
           </div>
         )}
 
-        {/* Estado */}
-        {isScanning && (
-          <div 
-            className="absolute top-3 left-3 px-3 py-1.5 rounded-full flex items-center gap-2"
-            style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
-          >
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <span className="text-white text-xs font-medium">Escaneando...</span>
-          </div>
-        )}
-
-        {/* Info de resolución */}
-        {isScanning && status.includes('x') && (
-          <div 
-            className="absolute bottom-3 left-3 px-2 py-1 rounded text-white text-xs"
-            style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
-          >
-            {status}
-          </div>
-        )}
-
-        {/* QR detectado */}
+        {/* Estado de éxito */}
         {status === '¡QR detectado!' && (
           <div 
             className="absolute inset-0 flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+            style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}
           >
             <div className="text-center">
               <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-2" />
-              <p className="text-white text-lg font-bold">¡QR Detectado!</p>
+              <p className="text-white font-bold">¡QR Detectado!</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Error */}
+      {/* INFO DE DEBUG */}
+      {isScanning && videoWidth > 0 && (
+        <div className="text-center text-xs text-green-600 font-medium">
+          ✓ Cámara activa: {videoWidth}x{videoHeight}
+        </div>
+      )}
+
+      {/* ERROR */}
       {error && (
-        <div className="bg-red-100 border border-red-300 rounded-xl p-3 text-center">
-          <p className="text-red-700 text-sm">{error}</p>
+        <div className="bg-red-100 text-red-700 p-3 rounded-xl text-sm text-center">
+          {error}
         </div>
       )}
 
@@ -283,44 +226,26 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
         {!isScanning ? (
           <button
             onClick={startScanner}
-            className="flex items-center gap-2 px-8 py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-bold text-lg shadow-lg active:scale-95 transition"
+            className="flex items-center gap-2 px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-lg transition active:scale-95"
           >
-            <Camera className="w-6 h-6" />
+            <Camera className="w-5 h-5" />
             Iniciar Cámara
           </button>
         ) : (
-          <>
-            {cameras.length > 1 && (
-              <button
-                onClick={switchCamera}
-                className="flex items-center gap-2 px-4 py-3 bg-slate-600 hover:bg-slate-500 text-white rounded-xl font-medium active:scale-95 transition"
-              >
-                <SwitchCamera className="w-5 h-5" />
-                Cambiar
-              </button>
-            )}
-            
-            <button
-              onClick={stopScanner}
-              className="flex items-center gap-2 px-6 py-3 bg-red-500 hover:bg-red-400 text-white rounded-xl font-bold active:scale-95 transition"
-            >
-              <CameraOff className="w-5 h-5" />
-              Detener
-            </button>
-          </>
+          <button
+            onClick={stopScanner}
+            className="flex items-center gap-2 px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition active:scale-95"
+          >
+            <CameraOff className="w-5 h-5" />
+            Detener
+          </button>
         )}
       </div>
 
-      {/* Instrucciones */}
+      {/* INSTRUCCIONES */}
       {isScanning && (
-        <div className="text-center text-sm text-slate-500 px-4">
-          📱 Apunta la cámara al código QR - El escaneo es automático
-        </div>
-      )}
-
-      {cameras.length > 0 && !isScanning && (
-        <p className="text-center text-xs text-slate-400">
-          📷 {cameras.length} cámara(s) detectada(s)
+        <p className="text-center text-sm text-slate-500">
+          📱 Apunta al código QR - Escaneo automático
         </p>
       )}
     </div>
