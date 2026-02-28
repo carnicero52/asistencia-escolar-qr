@@ -214,6 +214,45 @@ export default function QRScanner({ onScan, isScanning, setIsScanning }: QRScann
         </div>
       )}
 
+      {/* BOTÓN DE ESCANEO MANUAL - SIEMPRE DISPONIBLE */}
+      {isScanning && videoWidth > 0 && (
+        <button
+          onClick={async () => {
+            if (!videoRef.current) return;
+            const video = videoRef.current;
+            
+            // Crear canvas para capturar frame
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            
+            ctx.drawImage(video, 0, 0);
+            
+            try {
+              const QrScanner = qrScannerRef.current;
+              if (!QrScanner) return;
+              
+              const result = await QrScanner.scanImage(video, { returnDetailedScanResult: true });
+              if (result?.data) {
+                setStatus('¡QR detectado!');
+                onScan(result.data);
+              } else {
+                setStatus('No se detectó QR');
+                setTimeout(() => setStatus('Cámara activa'), 2000);
+              }
+            } catch {
+              setStatus('No se detectó QR');
+              setTimeout(() => setStatus('Cámara activa'), 2000);
+            }
+          }}
+          className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-bold text-lg shadow-lg active:scale-98 transition"
+        >
+          📷 Capturar y Leer QR
+        </button>
+      )}
+
       {/* ERROR */}
       {error && (
         <div className="bg-red-100 text-red-700 p-3 rounded-xl text-sm text-center">
